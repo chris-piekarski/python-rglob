@@ -3,11 +3,11 @@
 from distutils.core import setup
 
 setup(name='rglob',
-      version='1.2',
+      version='1.3',
       description='Python Recursive Glob',
       author='Christopher Piekarski',
       author_email='polo1065@gmail.com',
-      keywords=['glob','recursive'],
+      keywords=['glob','recursive','line counter'],
       classifiers=[
                    'Intended Audience :: Developers',
                    'License :: OSI Approved :: Apache Software License',
