@@ -1,6 +1,6 @@
-This file is part of the rglob module.
+This file is part of the rglob package.
 Copyright (C) 2011 by 
-Christopher Piekarski <polo1065@gmail.com>
+Christopher Piekarski <chris@cpiekarski.com>
 PyPi: http://pypi.python.org/pypi/rglob/
 
 The 'rglob' module is free software: you can redistribute it and/or modify
