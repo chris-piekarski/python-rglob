@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(name='rglob',
-      version='1.3',
+      version='1.4',
       description='Python Recursive Glob',
       author='Christopher Piekarski',
       author_email='chris@cpiekarski.com',
