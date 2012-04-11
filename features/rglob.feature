@@ -34,5 +34,7 @@ Feature: Test RGlob
 		Given I create 1 .txt files in each directory
 		Then I find 1100 total directories
 		Then I find 1100 total .txt files
+		Given I sum .txt files known sizes
+		Then I can find the same size for .txt
 		Then I delete all
 		Then I find 0 total directories
