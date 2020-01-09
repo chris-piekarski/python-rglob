@@ -6,12 +6,12 @@ PyPi: http://pypi.python.org/pypi/rglob/
 Example:
 
 import rglob
-pyFiles = rglob.rglob("/", "*.py")
-pyFiles = rglob.rglob_("*.py")
+pyFiles = rglob.rglob("/", "*.py")  
+pyFiles = rglob.rglob_("*.py")  
 
 Troubleshooting:
 
-git clone git://github.com/chris-piekarski/python-rglob.git	
-pip install lettuce
-cd ~/python-rglob
-lettuce
+git clone git://github.com/chris-piekarski/python-rglob.git	 
+pip install lettuce  
+cd ~/python-rglob  
+lettuce  
