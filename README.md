@@ -1,7 +1,7 @@
-This file is part of the python 'rglob' package.
-Copyright (C) 2011 by 
-Christopher Piekarski <chris@cpiekarski.com>
-PyPi: http://pypi.python.org/pypi/rglob/
+This file is part of the python 'rglob' package.  
+Copyright (C) 2011 by   
+Christopher Piekarski <chris@cpiekarski.com>  
+PyPi: http://pypi.python.org/pypi/rglob/  
 
 Example:
 
