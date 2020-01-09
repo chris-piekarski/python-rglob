@@ -76,9 +76,9 @@ if __name__ == "__main__":
 	filterFunc = lambda x : True if (len(x.strip()) and x.strip()[0] != '#') else False
     
 	pyFiles = rglob(os.path.dirname(__file__), "*.py")
-	print " {} total lines".format(_count(pyFiles, filterFunc))
+	print(" {} total lines".format(_count(pyFiles, filterFunc)))
 	
 	pyFiles_ = rglob_("*.py")
-	print " {} total lines".format(_count(pyFiles_, filterFunc))
-	print " {} total lines".format(lcount(os.path.dirname(__file__), "*.py", filterFunc))
+	print(" {} total lines".format(_count(pyFiles_, filterFunc)))
+	print(" {} total lines".format(lcount(os.path.dirname(__file__), "*.py", filterFunc)))
 	
