@@ -3,7 +3,7 @@
 from setuptools import setup, Extension
 
 setup(name='rglob',
-      version='1.6',
+      version='1.7',
       description='Python Recursive Glob',
       author='Christopher Piekarski',
       author_email='chris@cpiekarski.com',
