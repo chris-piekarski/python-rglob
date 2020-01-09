@@ -11,7 +11,7 @@ pyFiles = rglob.rglob_("*.py")
 
 Troubleshooting:
 
-git clone git://github.com/chris-piekarski/python-rglob.git	 
+git clone git://github.com/chris-piekarski/python-rglob.git  
 pip install lettuce  
 cd ~/python-rglob  
 lettuce  
