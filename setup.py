@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup, Extension
 
 setup(name='rglob',
-      version='1.4',
+      version='1.5',
       description='Python Recursive Glob',
       author='Christopher Piekarski',
       author_email='chris@cpiekarski.com',
