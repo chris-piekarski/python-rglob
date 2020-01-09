@@ -1,6 +1,6 @@
 The final Python 2 package version is 1.4  
 Python 2 PyPi: https://pypi.org/project/rglob/1.4/  
-Python 3 PyPi: https://pypi.org/project/rglob/1.5/  
+Python 3 PyPi: https://pypi.org/project/rglob/1.7/  
 
 pip install jsocket  
 
