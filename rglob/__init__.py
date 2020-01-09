@@ -1,1 +1,1 @@
-from rglob import *
+from rglob.rglob import *
