@@ -5,7 +5,7 @@ PyPi: http://pypi.python.org/pypi/rglob/
 
 Example:
 
-import rglob
+import rglob  
 pyFiles = rglob.rglob("/", "*.py")  
 pyFiles = rglob.rglob_("*.py")  
 
