@@ -44,6 +44,35 @@ Note: When invoking from a shell, quote or escape glob patterns so your shell do
 - `rglob.tsize(base: str, pattern: str, func: Callable[[float], float] = rglob.megabytes) -> float`: Sums sizes (in bytes) of matching files, then converts using `func`.
 - Unit helpers: `rglob.kilobytes`, `rglob.megabytes`, `rglob.gigabytes`, `rglob.terabytes`.
 
+## Command-Line Interface
+
+`rglob` can also be used as a command-line tool.
+
+Important: quote your patterns
+
+- Always quote or escape glob patterns so your shell does not expand them before Python runs.
+- Wrong: `python3 -m rglob.cli find *.py` (the shell expands `*.py` first)
+- Right: `python3 -m rglob.cli find "*.py"`
+- Installed entry point works the same: `rglob find "*.py"`
+
+### Find files
+
+```bash
+rglob find "*.py"
+```
+
+### Count lines
+
+```bash
+rglob lcount "*.py" --no-empty --no-comments
+```
+
+### Get total size
+
+```bash
+rglob tsize "*.py" --unit mb
+```
+
 ### Tips
 
 - Paths returned are not guaranteed to be sorted; call `sorted(...)` if ordering matters.

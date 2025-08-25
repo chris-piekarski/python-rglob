@@ -5,3 +5,6 @@
 .project
 .pydevproject
 .settings
+
+# Ignore packaging metadata
+*.egg-info/

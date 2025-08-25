@@ -21,4 +21,9 @@ setup(name='rglob',
       packages=['rglob'],
       provides=['rglob'],
       license='OSI Approved Apache Software License',
+      entry_points={
+          'console_scripts': [
+              'rglob = rglob.cli:main',
+          ],
+      },
      )
