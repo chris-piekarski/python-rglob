@@ -71,14 +71,14 @@ pip install -e .
 
 ### Running examples/tests
 
-This repo includes legacy BDD tests using `lettuce`.
+This repo includes BDD tests using `behave`.
 
 ```bash
-pip install lettuce
-lettuce
+pip install behave
+behave
 ```
 
-Note: The legacy tests were originally written for Python 2 and may require tweaks for modern Python. The core library supports Python 3 (see `setup.py`).
+Note: The core library supports Python 3 (see `setup.py`).
 
 ## Why use this?
 

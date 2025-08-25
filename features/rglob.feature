@@ -38,3 +38,19 @@ Feature: Test RGlob
 		Then I can find the same size for .txt
 		Then I delete all
 		Then I find 0 total directories
+
+	Scenario: Count lines in text files
+		Given I create a root directory
+		And I create 10 subdirectories in each directory
+		And I create 2 .txt files in each directory
+		And I add 5 lines to each .txt file
+		When I count the lines in all .txt files
+		Then I should find 100 lines
+
+	Scenario: Use rglob_ to find files in the current working directory
+		Given I create a root directory
+		And I create 10 subdirectories in each directory
+		And I create 2 .py files in each directory
+		When I change the current working directory to the root directory
+		And I use rglob_ to find all .py files
+		Then I should find 20 files
