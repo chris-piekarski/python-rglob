@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+"""Package configuration for rglob."""
 
-from setuptools import setup, Extension
+from setuptools import setup
 
 setup(name='rglob',
       version='1.7',

@@ -117,7 +117,9 @@ def count_lines_in_files(context, file_type: str) -> None:
 
 @then("I should find {expected_line_count:d} lines")
 def check_line_count(context, expected_line_count: int) -> None:
-    assert context.line_count == expected_line_count, f"Expected {expected_line_count} lines, but found {context.line_count}"
+    assert context.line_count == expected_line_count, (
+        f"Expected {expected_line_count} lines, but found {context.line_count}"
+    )
 
 @when("I change the current working directory to the root directory")
 def change_cwd_to_root(context) -> None:
@@ -129,4 +131,6 @@ def use_rglob_(context, file_type: str) -> None:
 
 @then("I should find {expected_num_files:d} files")
 def check_found_files(context, expected_num_files: int) -> None:
-    assert len(context.found_files) == expected_num_files, f"Expected {expected_num_files} files, but found {len(context.found_files)}"
+    assert len(context.found_files) == expected_num_files, (
+        f"Expected {expected_num_files} files, but found {len(context.found_files)}"
+    )

@@ -1,0 +1,9 @@
+[tool.pylint.main]
+recursive = true
+
+[tool.pylint.messages_control]
+disable = []
+
+[tool.pylint.format]
+max-line-length = 100
+

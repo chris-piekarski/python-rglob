@@ -1,8 +1,20 @@
+"""Command-line interface for rglob helpers."""
+
 import argparse
 import os
-from rglob import rglob, lcount, tsize, kilobytes, megabytes, gigabytes, terabytes
+from rglob import (
+    rglob,
+    lcount,
+    tsize,
+    kilobytes,
+    megabytes,
+    gigabytes,
+    terabytes,
+)
 
-def main():
+def main() -> None:
+    """Parse arguments and execute rglob CLI commands."""
+
     parser = argparse.ArgumentParser(
         description="Recursive file operations.",
         epilog=(
@@ -16,20 +28,41 @@ def main():
     # Find command
     find_parser = subparsers.add_parser("find", help="Find files recursively.")
     find_parser.add_argument("pattern", help="The glob pattern to match.")
-    find_parser.add_argument("--base", default=os.getcwd(), help="The base directory to search in.")
+    find_parser.add_argument(
+        "--base", default=os.getcwd(), help="The base directory to search in."
+    )
 
     # Line count command
-    lcount_parser = subparsers.add_parser("lcount", help="Count lines in files recursively.")
+    lcount_parser = subparsers.add_parser(
+        "lcount", help="Count lines in files recursively."
+    )
     lcount_parser.add_argument("pattern", help="The glob pattern to match.")
-    lcount_parser.add_argument("--base", default=os.getcwd(), help="The base directory to search in.")
-    lcount_parser.add_argument("--no-empty", action="store_true", help="Exclude empty lines.")
-    lcount_parser.add_argument("--no-comments", action="store_true", help="Exclude comment lines (starting with #).")
+    lcount_parser.add_argument(
+        "--base", default=os.getcwd(), help="The base directory to search in."
+    )
+    lcount_parser.add_argument(
+        "--no-empty", action="store_true", help="Exclude empty lines."
+    )
+    lcount_parser.add_argument(
+        "--no-comments",
+        action="store_true",
+        help="Exclude comment lines (starting with #).",
+    )
 
     # Total size command
-    tsize_parser = subparsers.add_parser("tsize", help="Calculate the total size of files recursively.")
+    tsize_parser = subparsers.add_parser(
+        "tsize", help="Calculate the total size of files recursively."
+    )
     tsize_parser.add_argument("pattern", help="The glob pattern to match.")
-    tsize_parser.add_argument("--base", default=os.getcwd(), help="The base directory to search in.")
-    tsize_parser.add_argument("--unit", default="mb", choices=["kb", "mb", "gb", "tb"], help="The unit to display the size in.")
+    tsize_parser.add_argument(
+        "--base", default=os.getcwd(), help="The base directory to search in."
+    )
+    tsize_parser.add_argument(
+        "--unit",
+        default="mb",
+        choices=["kb", "mb", "gb", "tb"],
+        help="The unit to display the size in.",
+    )
 
     args = parser.parse_args()
 
@@ -43,11 +76,15 @@ def main():
             filter_funcs.append(lambda line: line.strip())
         if args.no_comments:
             filter_funcs.append(lambda line: not line.strip().startswith("#"))
-        
+
         def combined_filter(line):
             return all(f(line) for f in filter_funcs)
 
-        count = lcount(args.base, args.pattern, func=combined_filter if filter_funcs else lambda x: True)
+        count = lcount(
+            args.base,
+            args.pattern,
+            func=combined_filter if filter_funcs else (lambda _line: True),
+        )
         print(f"Total lines: {count}")
     elif args.command == "tsize":
         unit_funcs = {
