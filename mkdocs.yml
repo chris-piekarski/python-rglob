@@ -1,0 +1,91 @@
+site_name: rglob
+site_description: Lightweight recursive glob helpers for Python.
+site_url: https://chris-piekarski.github.io/python-rglob/
+repo_url: https://github.com/chris-piekarski/python-rglob
+repo_name: chris-piekarski/python-rglob
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - API: api.md
+  - CLI: cli.md
+  - Architecture: architecture.md
+  - Decisions:
+      - decisions/index.md
+      - "Build backend: hatchling": decisions/0001-build-backend.md
+      - "Python 3.11 floor": decisions/0002-python-floor.md
+      - "rglob returns list[Path] at 2.0": decisions/0003-path-return.md
+      - "Typer + Rich for CLI": decisions/0004-typer-rich.md
+      - "Single release strategy": decisions/0005-single-release.md
+      - "Aggregated 100% coverage": decisions/0006-aggregated-coverage.md
+      - "Behave kept as parallel BDD suite": decisions/0007-behave-parallel.md
+      - "Security model": decisions/0008-security-model.md
+  - Contributing: contributing.md
+  - Plans:
+      - "Modernization roadmap": plans/modernization-roadmap.md
+  - "Migrating to 2.0": migrating-to-2.0.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.snippets:
+      check_paths: true
+      base_path: ["."]
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            docstring_style: google
+            heading_level: 2
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/chris-piekarski/python-rglob
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/rglob/
