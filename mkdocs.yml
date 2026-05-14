@@ -51,6 +51,7 @@ nav:
   - Contributing: contributing.md
   - Plans:
       - "Modernization roadmap": plans/modernization-roadmap.md
+      - "2.0 PR summary": plans/rglob-2.0-pr-body.md
   - "Migrating to 2.0": migrating-to-2.0.md
   - Changelog: changelog.md
 

@@ -3,6 +3,10 @@
 # Auto-prefer the project's virtualenv when one exists. Falls back to
 # `python3` on PATH so CI (which runs without `.venv/`) still works.
 PYTHON ?= $(if $(wildcard .venv/bin/python),$(CURDIR)/.venv/bin/python,python3)
+# Direct script invocation for mkdocs — `python -m mkdocs` puts the CWD on
+# sys.path, which confuses mkdocstrings into trying to import the
+# `mkdocs-typer2` plugin as a Python object and the build fails.
+MKDOCS ?= $(if $(wildcard .venv/bin/mkdocs),$(CURDIR)/.venv/bin/mkdocs,mkdocs)
 PACKAGE := rglob
 
 .PHONY: help build lint test fmt docs docs-build dev-setup clean
@@ -27,10 +31,10 @@ fmt:  ## Auto-format with ruff (modifies files in place)
 	$(PYTHON) -m ruff check --fix .
 
 docs:  ## Serve MkDocs preview on http://localhost:8000
-	$(PYTHON) -m mkdocs serve
+	$(MKDOCS) serve
 
 docs-build:  ## Build static docs site to ./site
-	$(PYTHON) -m mkdocs build --strict
+	$(MKDOCS) build --strict
 
 dev-setup:  ## Install dev extras + pre-commit hooks
 	$(PYTHON) -m pip install -e ".[dev,bdd,docs,gitignore,ext,bench]"

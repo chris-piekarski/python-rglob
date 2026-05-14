@@ -32,6 +32,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 dynamic = ["version"]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13",
+]
 
 [project.urls]
 Homepage = "https://github.com/chris-piekarski/python-rglob"
