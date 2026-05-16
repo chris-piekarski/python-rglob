@@ -18,15 +18,17 @@ import re
 import sys
 import warnings
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
 from rglob._filters import (
     Kind,
     gitignore_matcher,
-    kinds_match,
+    kinds_predicate,
     mtime_predicate,
+    owner_predicate,
+    perm_predicate,
     size_predicate,
 )
 
@@ -78,6 +80,11 @@ def _os_default_case_sensitive() -> bool:
     return sys.platform not in ("win32", "darwin")
 
 
+def _always_true(_value: str) -> bool:
+    """Constant `True` matcher used as a fast path for `*` / `**` patterns."""
+    return True
+
+
 def _compile_matcher(pattern: str, *, case_sensitive: bool) -> tuple[Callable[[str], bool], bool]:
     """Compile a single glob pattern into a matcher.
 
@@ -88,17 +95,30 @@ def _compile_matcher(pattern: str, *, case_sensitive: bool) -> tuple[Callable[[s
 
     ``**`` is supported as "any number of path components, including zero".
     All other meta-characters follow ``fnmatch`` semantics.
+
+    Two patterns shortcut to a no-op matcher to skip regex compilation
+    and per-entry `fullmatch` calls: bare ``*`` (match every basename)
+    and bare ``**`` (match every relative path).
     """
+    if pattern == "*":
+        return (_always_true, False)
+    if pattern == "**":
+        return (_always_true, True)
+
     flags = 0 if case_sensitive else re.IGNORECASE
     has_double_star = "**" in pattern
     has_separator = "/" in pattern or os.sep in pattern
 
     if has_double_star:
-        # Translate `**/` (slash-suffix), `/**` (slash-prefix), and bare `**`
-        # separately so `**/X` also matches `X` at the top level.
+        # Translate `**/` (slash-suffix) and `/**` (slash-prefix) into
+        # placeholders that survive `fnmatch.translate` and then expand
+        # to "zero or more path components". Bare `**` (the standalone
+        # pattern) is handled by the shortcut at the top of the function;
+        # `**` between non-slash chars (`a**b`) is uncommon and falls
+        # through to the per-character path, where it ends up equivalent
+        # to a single `*`.
         s_dstar_slash = "\x00DSTARSLASH\x00"
         s_slash_dstar = "\x00SLASHDSTAR\x00"
-        s_dstar = "\x00DSTAR\x00"
         cooked: list[str] = []
         i = 0
         normalized = pattern.replace(os.sep, "/")
@@ -111,16 +131,19 @@ def _compile_matcher(pattern: str, *, case_sensitive: bool) -> tuple[Callable[[s
             ):
                 cooked.append(s_slash_dstar)
                 i += 3
-            elif normalized[i : i + 2] == "**":
-                cooked.append(s_dstar)
-                i += 2
             else:
+                # Bare `**` between segments (e.g. `a**b`) falls through to
+                # the per-character path; fnmatch.translate turns `*` into
+                # `.*`, so `**` becomes `.*.*` — semantically equivalent
+                # to `.*`. Treating it specially here would be dead code:
+                # gitignore/ripgrep semantics require `**` to be its own
+                # path component, which is already handled by the `**/`
+                # and `/**` branches above.
                 cooked.append(normalized[i])
                 i += 1
         translated = fnmatch.translate("".join(cooked))
         translated = translated.replace(s_dstar_slash, "(?:.*/)?")
         translated = translated.replace(s_slash_dstar, "(?:/.*)?")
-        translated = translated.replace(s_dstar, ".*")
         regex = re.compile(translated, flags)
         return (lambda s: regex.fullmatch(s) is not None, True)
 
@@ -197,8 +220,8 @@ def _scandir_sorted(
 
 
 def _walk(
-    base: Path,
     current: Path,
+    current_rel: str,
     depth: int,
     *,
     matchers: list[tuple[Callable[[str], bool], bool]],
@@ -209,9 +232,7 @@ def _walk(
     sort: bool,
     on_error: Callable[[OSError], None],
     visited: set[str],
-    kinds: frozenset[Kind],
-    size_filter: Callable[[os.DirEntry[str]], bool],
-    mtime_filter: Callable[[os.DirEntry[str]], bool],
+    entry_filters: tuple[Callable[[os.DirEntry[str]], bool], ...],
     gitignore: Callable[[Path], bool] | None,
 ) -> Iterator[Path]:
     """Depth-first walker producing matching paths."""
@@ -220,28 +241,21 @@ def _walk(
         if not hidden and name.startswith("."):
             continue
 
-        path = Path(entry.path)
-        try:
-            rel = path.relative_to(base)
-            rel_str = rel.as_posix()
-        except ValueError:  # pragma: no cover - DirEntry paths are always under base
-            continue
+        rel_str = f"{current_rel}/{name}" if current_rel else name
+        path: Path | None = None
 
         if excluders and _matches_any(excluders, basename=name, rel_str=rel_str):
             continue
-        if gitignore is not None and gitignore(path):
-            continue
+        if gitignore is not None:
+            path = Path(entry.path)
+            if gitignore(path):
+                continue
 
-        passes_kind = kinds_match(entry, kinds)
-        passes_size = size_filter(entry)
-        passes_mtime = mtime_filter(entry)
-
-        if (
-            (not matchers or _matches_any(matchers, basename=name, rel_str=rel_str))
-            and passes_kind
-            and passes_size
-            and passes_mtime
+        if (not matchers or _matches_any(matchers, basename=name, rel_str=rel_str)) and all(
+            check(entry) for check in entry_filters
         ):
+            if path is None:
+                path = Path(entry.path)
             yield path
 
         try:
@@ -254,18 +268,22 @@ def _walk(
         if max_depth is not None and depth >= max_depth:
             continue
 
-        try:
-            real = os.path.realpath(path)
-        except OSError as exc:  # pragma: no cover - realpath is documented not to raise
-            on_error(exc)
-            continue
-        if real in visited:
-            continue
-        visited.add(real)
+        if path is None:
+            path = Path(entry.path)
+
+        if follow_symlinks:
+            try:
+                real = os.path.realpath(path)
+            except OSError as exc:  # pragma: no cover - realpath is documented not to raise
+                on_error(exc)
+                continue
+            if real in visited:
+                continue
+            visited.add(real)
 
         yield from _walk(
-            base,
             path,
+            rel_str,
             depth + 1,
             matchers=matchers,
             excluders=excluders,
@@ -275,9 +293,7 @@ def _walk(
             sort=sort,
             on_error=on_error,
             visited=visited,
-            kinds=kinds,
-            size_filter=size_filter,
-            mtime_filter=mtime_filter,
+            entry_filters=entry_filters,
             gitignore=gitignore,
         )
 
@@ -298,6 +314,10 @@ def find(
     max_size: int | float | str | None = None,
     newer_than: datetime | timedelta | str | None = None,
     older_than: datetime | timedelta | str | None = None,
+    newer_than_file: str | os.PathLike[str] | None = None,
+    perm: int | str | None = None,
+    uid: int | None = None,
+    gid: int | None = None,
     respect_gitignore: bool = False,
 ) -> Iterator[Path]:
     """Recursively yield filesystem entries matching ``patterns`` under ``base``.
@@ -324,7 +344,13 @@ def find(
             (case-sensitive on Linux, case-insensitive on macOS/Windows).
         sort: When ``True`` (default), entries within each directory are
             yielded in sorted order, giving a deterministic depth-first
-            traversal. Set ``False`` for raw ``scandir`` order.
+            traversal. Set ``False`` for raw ``scandir`` order — this is
+            the **performance mode** when stable ordering isn't required;
+            it skips a per-directory sort that costs ~5-10% on large
+            trees and makes the walker proportionally lighter for
+            agent/CLI consumers that pipe results through their own
+            sorter (or don't care about order at all, like ``--null``
+            and ``--jsonl`` consumers).
         on_error: How to handle ``OSError`` / ``PermissionError`` while
             walking. ``"warn"`` (default) emits a :class:`RuntimeWarning`;
             ``"ignore"`` swallows the error; ``"raise"`` re-raises.
@@ -341,6 +367,12 @@ def find(
             relative duration like ``"7d"`` / ``"3h"`` / ``"2w"``.
         older_than: Only yield entries with mtime strictly before this
             timestamp — same format as ``newer_than``.
+        newer_than_file: Only yield entries with mtime strictly after this
+            file's mtime.
+        perm: POSIX permission filter. Plain values require exact mode,
+            ``-MODE`` requires all bits, and ``/MODE`` requires any bit.
+        uid: POSIX owner uid filter.
+        gid: POSIX owner gid filter.
         respect_gitignore: When ``True``, skip files that any `.gitignore`
             under ``base`` would ignore. Requires the optional ``pathspec``
             dependency (``pip install rglob[gitignore]``); silently
@@ -367,15 +399,30 @@ def find(
     matchers = _compile_patterns(patterns, case_sensitive=case_sensitive)
     excluders = _compile_patterns(exclude, case_sensitive=case_sensitive)
     handler = _make_error_handler(on_error)
-    visited: set[str] = {os.path.realpath(base_path)}
+    visited: set[str] = {os.path.realpath(base_path)} if follow_symlinks else set()
 
-    size_check = size_predicate(min_size, max_size)
-    mtime_check = mtime_predicate(newer_than, older_than)
+    if newer_than_file is not None:
+        newer_stat = Path(newer_than_file).stat()
+        newer_than = datetime.fromtimestamp(newer_stat.st_mtime, tz=UTC)
+
+    entry_filters: list[Callable[[os.DirEntry[str]], bool]] = []
+    kinds_set = frozenset(kinds)
+    if kinds_set:
+        entry_filters.append(kinds_predicate(kinds_set))
+    if min_size is not None or max_size is not None:
+        entry_filters.append(size_predicate(min_size, max_size))
+    if newer_than is not None or older_than is not None:
+        entry_filters.append(mtime_predicate(newer_than, older_than))
+    if perm is not None:
+        entry_filters.append(perm_predicate(perm))
+    if uid is not None or gid is not None:
+        entry_filters.append(owner_predicate(uid, gid))
+
     gitignore_check = gitignore_matcher(base_path) if respect_gitignore else None
 
     return _walk(
         base_path,
-        base_path,
+        "",
         0,
         matchers=matchers,
         excluders=excluders,
@@ -385,9 +432,7 @@ def find(
         sort=sort,
         on_error=handler,
         visited=visited,
-        kinds=frozenset(kinds),
-        size_filter=size_check,
-        mtime_filter=mtime_check,
+        entry_filters=tuple(entry_filters),
         gitignore=gitignore_check,
     )
 

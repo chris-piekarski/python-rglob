@@ -209,6 +209,39 @@ def test_sort_false_raw_order(tmp_path):
     assert {p.name for p in out} == {"a.txt", "b.txt", "c.txt"}
 
 
+# ─── performance-sensitive fast paths ────────────────────────────────────────
+
+
+def test_find_avoids_pathlib_relative_to_per_entry(tmp_path, monkeypatch):
+    """The walker carries relative strings instead of recomputing Path.relative_to."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text("")
+
+    def boom(self, *other):
+        raise AssertionError(f"relative_to should not be called for {self!s} / {other!r}")
+
+    monkeypatch.setattr(Path, "relative_to", boom)
+
+    out = find_all(tmp_path, "**/*.py")
+
+    assert [path.name for path in out] == ["mod.py"]
+
+
+def test_find_avoids_realpath_when_not_following_symlinks(tmp_path, monkeypatch):
+    """Cycle detection realpath work is only needed when following symlinks."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text("")
+
+    def boom(_path):
+        raise AssertionError("realpath should not be called unless follow_symlinks=True")
+
+    monkeypatch.setattr(os.path, "realpath", boom)
+
+    out = find_all(tmp_path, "*.py")
+
+    assert [path.name for path in out] == ["mod.py"]
+
+
 # ─── on_error ────────────────────────────────────────────────────────────────
 
 

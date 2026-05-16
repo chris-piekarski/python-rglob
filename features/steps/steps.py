@@ -7,7 +7,11 @@ Pylint notes:
 # pylint: disable=missing-function-docstring,not-callable
 from __future__ import annotations
 
+import json
 import os
+import shlex
+import subprocess
+import sys
 import tempfile
 
 from behave import given, then, when
@@ -40,6 +44,7 @@ def create_subdirectories(context, num_of_sub_dirs: int) -> None:
     context.dirs.extend(subdirs)
 
 
+@given("I create {num_of_files:d} {file_type} file in each directory")
 @given("I create {num_of_files:d} {file_type} files in each directory")
 def create_files(context, num_of_files: int, file_type: str) -> None:
     if not hasattr(context, "known_sizes"):
@@ -125,6 +130,112 @@ def change_cwd_to_root(context) -> None:
 @when("I use rglob_ to find all {file_type} files")
 def use_rglob_(context, file_type: str) -> None:
     context.found_files = rglob.rglob_(f"*{file_type}")
+
+
+# ============================================================
+# New steps for agent platform CLI commands (grep, count, describe, schema, capabilities)
+# ============================================================
+
+
+@when('I run "{command}"')
+def run_rglob_command(context, command: str):
+    """Run a rglob CLI command via python -m for reliability in test environments."""
+    args = shlex.split(command)
+    if args and args[0] == "rglob":
+        args = args[1:]
+    result = subprocess.run(
+        [sys.executable, "-m", "rglob.cli", *args],
+        cwd=context.root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    context.last_result = result
+    context.last_stdout = result.stdout
+    context.last_stderr = result.stderr
+
+
+@then("the command succeeds")
+def command_succeeds(context):
+    assert context.last_result.returncode == 0, (
+        f"Command failed (exit code {context.last_result.returncode})\n"
+        f"stderr:\n{context.last_stderr}\n"
+        f"stdout:\n{context.last_stdout}"
+    )
+
+
+@then("the output should be valid JSON")
+def output_is_valid_json(context):
+    try:
+        json.loads(context.last_stdout)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(
+            f"Output was not valid JSON: {exc}\nOutput was:\n{context.last_stdout}"
+        ) from exc
+
+
+def _last_json(context):
+    """Return the most recent CLI stdout as JSON."""
+    return json.loads(context.last_stdout)
+
+
+def _contains_key(value, key: str) -> bool:
+    """Return true if a JSON-compatible value contains a key anywhere."""
+    if isinstance(value, dict):
+        return key in value or any(_contains_key(item, key) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(item, key) for item in value)
+    return False
+
+
+@then('the JSON output should contain a "{key}" list')
+def json_contains_list(context, key: str):
+    data = _last_json(context)
+    assert key in data and isinstance(data[key], list), (
+        f"Expected '{key}' to be a list in JSON output"
+    )
+
+
+@then('the JSON output should contain "{field}" and "errors" fields')
+def json_contains_truncation_and_errors(context, field: str):
+    data = _last_json(context)
+    assert field in data, f"Missing field: {field}"
+    assert "errors" in data, "Missing 'errors' field"
+
+
+@then('the JSON output should contain "{field1}", "{field2}", and "{field3}"')
+def json_contains_three_fields(context, field1: str, field2: str, field3: str):
+    data = _last_json(context)
+    for field in (field1, field2, field3):
+        assert field in data, f"Missing field: {field}"
+
+
+@then('the JSON should contain the key "{key}"')
+@then('the JSON should contain "{key}"')
+def json_contains_key(context, key: str):
+    data = _last_json(context)
+    assert key in data, f"Expected key '{key}' not found in JSON output"
+
+
+@then("the output should be valid JSON Schema Draft 2020-12")
+def output_is_valid_json_schema(context):
+    data = _last_json(context)
+    if "$schema" in data:
+        assert data["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+        return
+    for schema in data.values():
+        assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+
+
+@then('the JSON should contain an "{key}" field')
+def json_contains_key_anywhere(context, key: str):
+    assert _contains_key(_last_json(context), key), f"Expected key '{key}' not found"
+
+
+@then("the JSON output should indicate that results were truncated")
+def json_indicates_truncation(context):
+    data = _last_json(context)
+    assert data.get("truncated") is True, "Expected 'truncated' to be True in JSON output"
 
 
 @then("I should find {expected_num_files:d} files")

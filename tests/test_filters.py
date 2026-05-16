@@ -9,7 +9,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from rglob import find_all
-from rglob._filters import parse_size, parse_time
+from rglob._filters import (
+    kinds_match,
+    mtime_predicate,
+    owner_predicate,
+    parse_perm,
+    parse_size,
+    parse_time,
+    perm_predicate,
+    size_predicate,
+)
 
 # ─── parse_size ───────────────────────────────────────────────────────────────
 
@@ -35,6 +44,28 @@ def test_parse_size(value, expected):
 def test_parse_size_invalid():
     with pytest.raises(ValueError, match="unparseable size"):
         parse_size("nope")
+
+
+# ─── parse_perm ──────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("644", (0o644, "exact")),
+        ("0o755", (0o755, "exact")),
+        ("-111", (0o111, "all")),
+        ("/222", (0o222, "any")),
+        (0o600, (0o600, "exact")),
+    ],
+)
+def test_parse_perm(value, expected):
+    assert parse_perm(value) == expected
+
+
+def test_parse_perm_invalid():
+    with pytest.raises(ValueError, match="unparseable permission mode"):
+        parse_perm("nope")
 
 
 # ─── parse_time ───────────────────────────────────────────────────────────────
@@ -122,6 +153,50 @@ def test_kinds_symlink(tmp_path):
     assert {p.name for p in out} == {"link.txt"}
 
 
+def test_default_entry_predicates_pass(tmp_path):
+    """Inactive entry predicates remain explicit pass-through helpers."""
+    target = tmp_path / "a.txt"
+    target.write_text("")
+    with os.scandir(tmp_path) as entries:
+        entry = next(item for item in entries if item.name == target.name)
+
+        assert kinds_match(entry, ())
+        assert kinds_match(entry, ("f",))  # exercises _entry_kind() via legacy path
+        assert size_predicate(None, None)(entry)
+        assert mtime_predicate(None, None)(entry)
+        assert perm_predicate(None)(entry)
+        assert owner_predicate(None, None)(entry)
+
+
+def test_kinds_predicate_empty_set_is_match_all():
+    """`kinds_predicate(())` returns a match-everything closure."""
+    from rglob._filters import kinds_predicate
+
+    pred = kinds_predicate(())
+    # The closure must accept any input and return truthy; it's only
+    # called by the walker when no other filter has fired.
+    assert pred(object()) is True  # type: ignore[arg-type]
+
+
+def test_kinds_predicate_multi_kind_uses_union(tmp_path):
+    """A multi-kind set falls back to `_entry_kind` union semantics.
+
+    Includes a symlink so the `tags.add("l")` branch in `_entry_kind`
+    is exercised — single-kind paths bypass that helper entirely now.
+    """
+    (tmp_path / "file.txt").write_text("")
+    (tmp_path / "sub").mkdir()
+    target = tmp_path / "target.txt"
+    target.write_text("")
+    try:
+        (tmp_path / "link.txt").symlink_to(target)
+    except (OSError, NotImplementedError):  # pragma: no cover - Windows-only
+        pytest.skip("symlinks not permitted on this host")
+    out = find_all(tmp_path, "*", kinds={"f", "d", "l"})
+    names = {p.name for p in out}
+    assert names == {"file.txt", "sub", "target.txt", "link.txt"}
+
+
 # ─── size filters ────────────────────────────────────────────────────────────
 
 
@@ -175,6 +250,72 @@ def test_older_than_filter(tmp_path):
     new.write_text("")
     out = find_all(tmp_path, "*.txt", older_than="1d")
     assert {p.name for p in out} == {"old.txt"}
+
+
+def test_newer_than_file_filter(tmp_path):
+    """`newer_than_file` compares mtimes against a reference file."""
+    reference = tmp_path / "reference.ref"
+    reference.write_text("")
+    ref_mtime = time.time() - 86400
+    os.utime(reference, (ref_mtime, ref_mtime))
+    old = tmp_path / "old.txt"
+    old.write_text("")
+    old_mtime = time.time() - 86400 * 2
+    os.utime(old, (old_mtime, old_mtime))
+    new = tmp_path / "new.txt"
+    new.write_text("")
+
+    out = find_all(tmp_path, "*.txt", newer_than_file=reference)
+    assert {p.name for p in out} == {"new.txt"}
+
+
+# ─── find(1)-style permission / owner filters ────────────────────────────────
+
+
+def test_perm_exact_filter(tmp_path):
+    """`perm='600'` matches exact POSIX mode bits."""
+    private = tmp_path / "private.txt"
+    private.write_text("")
+    private.chmod(0o600)
+    public = tmp_path / "public.txt"
+    public.write_text("")
+    public.chmod(0o644)
+
+    out = find_all(tmp_path, "*.txt", perm="600")
+    assert {p.name for p in out} == {"private.txt"}
+
+
+def test_perm_all_and_any_filters(tmp_path):
+    """Leading '-' and '/' implement all-bits and any-bits matching."""
+    executable = tmp_path / "run.sh"
+    executable.write_text("")
+    executable.chmod(0o755)
+    plain = tmp_path / "plain.sh"
+    plain.write_text("")
+    plain.chmod(0o644)
+
+    assert {p.name for p in find_all(tmp_path, "*.sh", perm="-111")} == {"run.sh"}
+    assert {p.name for p in find_all(tmp_path, "*.sh", perm="/111")} == {"run.sh"}
+
+
+def test_uid_gid_filters(tmp_path):
+    """POSIX uid/gid filters match the current process owner."""
+    if os.name != "posix":
+        pytest.skip("uid/gid filters are POSIX-only")
+    target = tmp_path / "owned.txt"
+    target.write_text("")
+    out = find_all(tmp_path, "*.txt", uid=os.getuid(), gid=os.getgid())
+    assert {p.name for p in out} == {"owned.txt"}
+
+
+def test_uid_filter_rejects_non_matching_owner(tmp_path):
+    """A non-matching uid excludes otherwise matching files."""
+    if os.name != "posix":
+        pytest.skip("uid/gid filters are POSIX-only")
+    target = tmp_path / "owned.txt"
+    target.write_text("")
+    out = find_all(tmp_path, "*.txt", uid=os.getuid() + 1)
+    assert out == []
 
 
 # ─── .gitignore awareness ────────────────────────────────────────────────────

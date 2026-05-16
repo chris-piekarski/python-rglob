@@ -8,9 +8,10 @@ hobby package — keep changes scoped, idiomatic, and small.
 
 - **Name**: `rglob` — lightweight recursive glob helpers for Python.
 - **Surface**: `find` / `find_all` (modern), `rglob` / `rglob_` / `lcount` /
-  `tsize` (legacy), `kilobytes` / `megabytes` / `gigabytes` / `terabytes`
-  (unit helpers). CLI: `find`, `lcount`, `tsize`, `stats`, `tree`, `top`,
-  `dupes`.
+  `tsize` (legacy), `rglob.agent` (stable agent API),
+  `kilobytes` / `megabytes` / `gigabytes` / `terabytes` (unit helpers).
+  CLI: `find`, `grep`, `count`, `lcount`, `tsize`, `stats`, `tree`, `top`,
+  `dupes`, `describe`, `schema`, `capabilities`, `agent-version`, `mcp`.
 - **Python**: 3.11+ (3.10 drops at the 2.0 release — see
   [ADR-0002](docs/decisions/0002-python-floor.md)).
 - **Build backend**: hatchling. **CLI**: Typer + Rich.
@@ -25,6 +26,7 @@ src/rglob/                  # the package
   cli.py                    # Typer CLI app
   _filters.py               # size/time/kind parsers and predicates (Phase 5)
   _dupes.py                 # duplicate-detection pipeline (Phase 5)
+  agent/                    # stable agent dataclasses, schemas, MCP server
   py.typed                  # PEP 561 marker
 tests/                      # primary suite — pytest + hypothesis + syrupy
 features/                   # parallel BDD suite (behave) — shares helpers
@@ -33,6 +35,41 @@ docs/                       # MkDocs site source
   decisions/                # ADRs (build backend, Python floor, etc.)
 .github/workflows/          # ci.yml + release.yml + docs.yml
 ```
+
+## Consumer guidance for agents using `rglob`
+
+If you are an agent consuming this package in another project, prefer the
+stable machine surfaces:
+
+```bash
+pip install rglob
+rglob describe find
+rglob schema grep
+rglob schema --all
+rglob capabilities --json
+```
+
+For Python integrations, import from `rglob.agent`, not private modules:
+
+```python
+from pathlib import Path
+
+from rglob.agent import WalkOptions, search_all
+
+result = search_all(WalkOptions(patterns=["*.py"], base=Path(".")))
+```
+
+For MCP hosts:
+
+```bash
+pip install "rglob[mcp]"
+rglob mcp
+```
+
+Structured outputs are bounded with `--limit`, `--max-bytes`, and
+`--max-file-size`; they report `truncated` and `truncated_reason` when a
+limit is hit. Operational failures are returned as `ErrorInfo` records or a
+stable error envelope. See `docs/agents/` for setup and safety details.
 
 ## Mandatory conventions
 
@@ -67,10 +104,12 @@ make dev-setup       # one-time: installs [dev,bdd,docs,gitignore,ext,bench]
 make help            # list all targets
 make lint            # ruff check + ruff format --check + mypy --strict
 make test            # pytest --cov-fail-under=100 + behave (both gating)
+make bench           # pytest-benchmark walker benchmarks; rg comparison skips if absent
 make fmt             # auto-format with ruff
 make docs            # live MkDocs preview on :8000
 make docs-build      # static site build (strict mode)
 make build           # hatch build → dist/{sdist,wheel}
+make publish         # hatch build + twine check/upload to PyPI
 make clean           # remove caches and build outputs
 ```
 

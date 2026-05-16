@@ -14,3 +14,5 @@ follows a slim format: **Context → Decision → Consequences**.
 | 0006 | [Aggregated 100% coverage](0006-aggregated-coverage.md) | Accepted |
 | 0007 | [Behave kept as parallel BDD suite](0007-behave-parallel.md) | Accepted |
 | 0008 | [Security model](0008-security-model.md)          | Draft    |
+| 0009 | [Agent API contract](0009-agent-api-contract.md)  | Accepted |
+| 0010 | [Agent safety model](0010-agent-safety-model.md)  | Accepted |

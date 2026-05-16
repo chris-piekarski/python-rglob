@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 Kind = Literal["f", "d", "l", "x"]
+PermMode = Literal["exact", "all", "any"]
 
 # ─── Size strings ─────────────────────────────────────────────────────────────
 
@@ -120,11 +121,80 @@ def _entry_kind(entry: os.DirEntry[str]) -> set[Kind]:
 
 
 def kinds_match(entry: os.DirEntry[str], wanted: Iterable[Kind]) -> bool:
-    """Return ``True`` if the entry matches any wanted kind."""
+    """Return ``True`` if the entry matches any wanted kind.
+
+    Kept for backward-compatibility with direct callers. The walker
+    instead uses :func:`kinds_predicate` which returns a specialised
+    closure that avoids the generic set-intersection path (and the
+    `stat()` call that the executable check requires) for the common
+    single-kind cases.
+    """
     wanted_set = set(wanted)
     if not wanted_set:
         return True
     return bool(_entry_kind(entry) & wanted_set)
+
+
+def _entry_is_file(entry: os.DirEntry[str]) -> bool:
+    """Single-kind predicate: regular file (no symlink follow)."""
+    try:
+        return entry.is_file(follow_symlinks=False)
+    except OSError:  # pragma: no cover - rare
+        return False
+
+
+def _entry_is_dir(entry: os.DirEntry[str]) -> bool:
+    """Single-kind predicate: directory (no symlink follow)."""
+    try:
+        return entry.is_dir(follow_symlinks=False)
+    except OSError:  # pragma: no cover - rare
+        return False
+
+
+def _entry_is_symlink(entry: os.DirEntry[str]) -> bool:
+    """Single-kind predicate: symlink (any target type)."""
+    try:
+        return entry.is_symlink()
+    except OSError:  # pragma: no cover - rare
+        return False
+
+
+_EXEC_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+
+
+def _entry_is_executable(entry: os.DirEntry[str]) -> bool:
+    """Single-kind predicate: any exec bit set."""
+    try:
+        return bool(entry.stat(follow_symlinks=False).st_mode & _EXEC_BITS)
+    except OSError:  # pragma: no cover - rare
+        return False
+
+
+_SINGLE_KIND_PREDICATES: dict[Kind, Callable[[os.DirEntry[str]], bool]] = {
+    "f": _entry_is_file,
+    "d": _entry_is_dir,
+    "l": _entry_is_symlink,
+    "x": _entry_is_executable,
+}
+
+
+def kinds_predicate(wanted: Iterable[Kind]) -> Callable[[os.DirEntry[str]], bool]:
+    """Return an entry predicate specialised for the wanted kind set.
+
+    The single-kind cases (``{"f"}``, ``{"d"}``, ``{"l"}``, ``{"x"}``)
+    skip the four syscalls + ``stat()`` that the generic union path
+    requires when only one kind matters — a measurable walker-time
+    win when an agent filters by file kind.
+    """
+    wanted_set = frozenset(wanted)
+    if not wanted_set:
+        return lambda _entry: True
+    if len(wanted_set) == 1:
+        return _SINGLE_KIND_PREDICATES[next(iter(wanted_set))]
+    # Multi-kind: union semantics. Could be specialised further
+    # (e.g. `{"f","x"}` is just exec-bit-on regular files) but the
+    # gain shrinks as the set grows; keep the general path.
+    return lambda entry: bool(_entry_kind(entry) & wanted_set)
 
 
 # ─── Size / mtime predicates ──────────────────────────────────────────────────
@@ -174,6 +244,78 @@ def mtime_predicate(
         if after is not None and ts < after:
             return False
         return not (before is not None and ts > before)
+
+    return _check
+
+
+# ─── find(1)-style predicates ────────────────────────────────────────────────
+
+
+def parse_perm(value: int | str) -> tuple[int, PermMode]:
+    """Parse a find-style permission expression.
+
+    Plain values (``"644"``, ``"0o644"``, ``420``) require an exact mode
+    match. A leading ``-`` requires all mask bits; a leading ``/`` requires
+    any mask bit.
+    """
+    if isinstance(value, int):
+        return value, "exact"
+
+    text = value.strip()
+    mode: PermMode = "exact"
+    if text.startswith("-"):
+        mode = "all"
+        text = text[1:]
+    elif text.startswith("/"):
+        mode = "any"
+        text = text[1:]
+
+    try:
+        parsed = int(text, 8)
+    except ValueError as exc:
+        raise ValueError(f"unparseable permission mode: {value!r}") from exc
+    return parsed, mode
+
+
+def perm_predicate(perm: int | str | None) -> Callable[[os.DirEntry[str]], bool]:
+    """Build a predicate that checks POSIX permission bits."""
+    if perm is None:
+        return lambda _entry: True
+
+    mask, mode = parse_perm(perm)
+
+    def _check(entry: os.DirEntry[str]) -> bool:
+        try:
+            bits = stat.S_IMODE(entry.stat(follow_symlinks=False).st_mode)
+        except OSError:  # pragma: no cover - rare
+            return True
+        if mode == "all":
+            return bits & mask == mask
+        if mode == "any":
+            return bool(bits & mask)
+        return bits == mask
+
+    return _check
+
+
+def owner_predicate(
+    uid: int | None,
+    gid: int | None,
+) -> Callable[[os.DirEntry[str]], bool]:
+    """Build a predicate that checks POSIX uid/gid ownership."""
+    if uid is None and gid is None:
+        return lambda _entry: True
+    if os.name != "posix":  # pragma: no cover - exercised by non-POSIX CI only
+        raise ValueError("uid/gid filters are POSIX-only")
+
+    def _check(entry: os.DirEntry[str]) -> bool:
+        try:
+            entry_stat = entry.stat(follow_symlinks=False)
+        except OSError:  # pragma: no cover - rare
+            return True
+        if uid is not None and entry_stat.st_uid != uid:
+            return False
+        return not (gid is not None and entry_stat.st_gid != gid)
 
     return _check
 

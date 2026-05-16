@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -54,24 +57,38 @@ def test_find_default_output(tmp_path, snapshot):
 
 
 def test_find_json_array(tmp_path):
-    """`--json` emits a single JSON array of strings."""
+    """`--json` emits a FileSearchResult object."""
     _build_tree(tmp_path)
     result = runner.invoke(app, ["find", "*.py", "--base", str(tmp_path), "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert isinstance(payload, list)
-    names = {p.rsplit("/", 1)[-1] for p in payload}
+    assert set(payload) >= {
+        "results",
+        "truncated",
+        "total_files_searched",
+        "bytes_read",
+        "errors",
+        "truncated_reason",
+    }
+    names = {Path(match["path"]).name for match in payload["results"]}
     assert names == {"a.py", "b.py", "nested.py"}
+    assert payload["truncated"] is False
 
 
 def test_find_jsonl(tmp_path):
-    """`--jsonl` emits one JSON object per line."""
+    """`--jsonl` emits one compact FileSearchResult object line."""
     _build_tree(tmp_path)
     result = runner.invoke(app, ["find", "*.py", "--base", str(tmp_path), "--jsonl"])
     assert result.exit_code == 0
     lines = [line for line in result.stdout.splitlines() if line.strip()]
-    payloads = [json.loads(line) for line in lines]
-    assert all("path" in obj and "size" in obj for obj in payloads)
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert "results" in payload
+    assert {Path(match["path"]).name for match in payload["results"]} == {
+        "a.py",
+        "b.py",
+        "nested.py",
+    }
 
 
 def test_find_null_separator(tmp_path):
@@ -161,6 +178,158 @@ def test_find_warns_on_pre_expansion(tmp_path):
     assert "pre-expand" in combined or result.exit_code == 0
 
 
+def test_find_json_limit_reports_truncation(tmp_path):
+    """Structured find output reports truncation metadata."""
+    _build_tree(tmp_path)
+    result = runner.invoke(
+        app,
+        ["find", "*.py", "--base", str(tmp_path), "--json", "--limit", "1"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload["results"]) == 1
+    assert payload["truncated"] is True
+    assert payload["truncated_reason"] == "limit"
+
+
+def test_find_json_bad_max_bytes_is_error_envelope(tmp_path):
+    """Bad structured resource limits produce machine-readable errors."""
+    _build_tree(tmp_path)
+    result = runner.invoke(
+        app,
+        ["find", "*.py", "--base", str(tmp_path), "--json", "--max-bytes", "nope"],
+    )
+    assert result.exit_code == 2
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "BAD_PREDICATE"
+
+
+def test_find_plain_bad_max_bytes_is_human_error(tmp_path):
+    """Bad human-output resource limits still produce a CLI error."""
+    _build_tree(tmp_path)
+    result = runner.invoke(
+        app,
+        ["find", "*.py", "--base", str(tmp_path), "--max-bytes", "nope"],
+    )
+    assert result.exit_code == 2
+    assert "unparseable size" in (result.stdout + result.stderr)
+
+
+def test_grep_json_output(tmp_path):
+    """`rglob grep --json` emits a LineSearchResult."""
+    (tmp_path / "notes.txt").write_text("TODO one\nnope\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["grep", "TODO", "*.txt", "--base", str(tmp_path), "--json"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["results"][0]["content"] == "TODO one"
+    assert payload["results"][0]["line_number"] == 1
+
+
+def test_grep_jsonl_output(tmp_path):
+    """`rglob grep --jsonl` streams one match per line then a summary record."""
+    (tmp_path / "notes.txt").write_text("TODO one\nTODO two\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["grep", "TODO", "*.txt", "--base", str(tmp_path), "--jsonl"],
+    )
+    assert result.exit_code == 0
+    lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    matches = [item for item in lines if item.get("kind") == "match"]
+    summaries = [item for item in lines if item.get("kind") == "summary"]
+    assert len(matches) == 2
+    assert {m["content"] for m in matches} == {"TODO one", "TODO two"}
+    assert len(summaries) == 1
+    assert summaries[0]["total_files_searched"] == 1
+    assert summaries[0]["truncated"] is False
+
+
+def test_grep_files_with_matches_human_output(tmp_path):
+    """`rglob grep -l` prints just the matching paths, one per line."""
+    (tmp_path / "a.txt").write_text("TODO\n")
+    (tmp_path / "b.txt").write_text("nope\n")
+    (tmp_path / "c.txt").write_text("TODO\nTODO\n")
+    result = runner.invoke(
+        app,
+        ["grep", "TODO", "*.txt", "--base", str(tmp_path), "-l"],
+    )
+    assert result.exit_code == 0
+    out_lines = sorted(line for line in result.stdout.splitlines() if line.strip())
+    # Two paths, one per line, no `:line:content` suffix.
+    assert len(out_lines) == 2
+    assert all(line.endswith(("a.txt", "c.txt")) for line in out_lines)
+
+
+def test_grep_count_only_human_output(tmp_path):
+    """`rglob grep -c` prints `path:count` lines."""
+    (tmp_path / "a.txt").write_text("TODO\nTODO\nTODO\n")
+    (tmp_path / "b.txt").write_text("none\n")
+    result = runner.invoke(
+        app,
+        ["grep", "TODO", "*.txt", "--base", str(tmp_path), "-c"],
+    )
+    assert result.exit_code == 0
+    out_lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert any(line.endswith("a.txt:3") for line in out_lines)
+
+
+def test_grep_files_with_matches_and_count_only_are_mutually_exclusive(tmp_path):
+    """Combining `-l` and `-c` is rejected."""
+    (tmp_path / "a.txt").write_text("TODO\n")
+    result = runner.invoke(
+        app,
+        ["grep", "TODO", "*.txt", "--base", str(tmp_path), "-l", "-c"],
+    )
+    assert result.exit_code == 2
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert "mutually exclusive" in combined
+
+
+def test_grep_human_output_and_warning(tmp_path):
+    """Human grep output prints path:line:content and binary warnings."""
+    (tmp_path / "notes.txt").write_text("TODO one\n", encoding="utf-8")
+    (tmp_path / "binary.bin").write_bytes(b"\x00TODO\x00")
+    result = runner.invoke(app, ["grep", "TODO", "*", "--base", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "TODO one" in result.stdout
+    assert "BINARY" in result.stderr
+
+
+def test_count_jsonl_output(tmp_path):
+    """`rglob count --jsonl` emits one compact Stats object line."""
+    (tmp_path / "a.py").write_text("x\n\n# comment\ny\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["count", "*.py", "--base", str(tmp_path), "--no-empty", "--no-comments", "--jsonl"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["files"] == 1
+    assert payload["lines"] == 2
+
+
+def test_count_json_output(tmp_path):
+    """`rglob count --json` emits a pretty Stats object."""
+    (tmp_path / "a.py").write_text("x\n", encoding="utf-8")
+    result = runner.invoke(app, ["count", "*.py", "--base", str(tmp_path), "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["files"] == 1
+    assert payload["lines"] == 1
+
+
+def test_count_human_output(tmp_path):
+    """`rglob count` prints files, lines, and bytes for humans."""
+    (tmp_path / "a.py").write_text("x\n", encoding="utf-8")
+    result = runner.invoke(app, ["count", "*.py", "--base", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "Files: 1" in result.stdout
+    assert "Lines: 1" in result.stdout
+
+
 # ─── lcount ──────────────────────────────────────────────────────────────────
 
 
@@ -244,13 +413,115 @@ def test_help_runs():
     assert "tsize" in result.stdout
 
 
+def test_module_help_imports_in_fresh_process():
+    """`python -m rglob.cli --help` does not hit agent import cycles."""
+    result = subprocess.run(
+        [sys.executable, "-m", "rglob.cli", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "find" in result.stdout
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escapes and collapse whitespace for substring assertions.
+
+    Rich's help renderer styles option names and may wrap long ones across
+    lines when the host terminal is narrow (e.g. on GitHub Actions where
+    FORCE_COLOR is set). This helper makes substring checks invariant to
+    both styling and wrapping.
+    """
+    return re.sub(r"\s+", " ", _ANSI_RE.sub("", text))
+
+
 def test_find_help_lists_filter_flags():
     """`rglob find --help` documents the new filter flags."""
     result = runner.invoke(app, ["find", "--help"])
     assert result.exit_code == 0
-    out = result.stdout
+    plain = _plain(result.stdout)
     for flag in ("--exclude", "--max-depth", "--hidden", "--follow", "--json"):
-        assert flag in out
+        assert flag in plain, f"expected {flag!r} in help output"
+
+
+# ─── agent introspection ─────────────────────────────────────────────────────
+
+
+def test_describe_find_outputs_manifest_json():
+    """`rglob describe find` is a pure JSON manifest."""
+    result = runner.invoke(app, ["describe", "find"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["name"] == "find"
+    assert payload["agent_api_version"] == "1.0"
+    assert "schemas" in payload
+
+
+def test_schema_find_outputs_input_and_output_schemas():
+    """`rglob schema find` exposes the generated schemas."""
+    result = runner.invoke(app, ["schema", "find"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["input"]["title"] == "WalkOptions"
+    assert payload["output"]["title"] == "FileSearchResult"
+
+
+def test_schema_all_outputs_all_public_schemas():
+    """`rglob schema --all` exposes every public generated schema."""
+    result = runner.invoke(app, ["schema", "--all"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["walk_options"]["title"] == "WalkOptions"
+    assert payload["grep_options"]["title"] == "GrepOptions"
+    assert payload["file_search_result"]["title"] == "FileSearchResult"
+
+
+def test_schema_unknown_subcommand_is_error_envelope():
+    """Unknown schema targets produce the same stable error envelope."""
+    result = runner.invoke(app, ["schema", "missing"])
+    assert result.exit_code == 2
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "BAD_PREDICATE"
+
+
+def test_schema_requires_subcommand_or_all():
+    """`rglob schema` without a target stays a JSON error endpoint."""
+    result = runner.invoke(app, ["schema"])
+    assert result.exit_code == 2
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "BAD_PREDICATE"
+
+
+def test_capabilities_json_report():
+    """`rglob capabilities --json` reports versioned capabilities."""
+    result = runner.invoke(app, ["capabilities", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["agent_api_version"] == "1.0"
+    assert payload["schema_version"] == "1.0"
+    assert "extras" in payload
+
+
+def test_agent_version_is_json_string():
+    """`rglob agent-version` emits a JSON string."""
+    result = runner.invoke(app, ["agent-version"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == "1.0"
+
+
+def test_describe_unknown_subcommand_is_error_envelope():
+    """Unknown introspection targets produce a stable error envelope."""
+    result = runner.invoke(app, ["describe", "missing"])
+    assert result.exit_code == 2
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "BAD_PREDICATE"
 
 
 # ─── Coverage edge cases (OSError paths) ─────────────────────────────────────
@@ -276,7 +547,7 @@ def test_find_format_handles_stat_oserror(tmp_path, monkeypatch):
 
 
 def test_find_jsonl_handles_stat_oserror(tmp_path, monkeypatch):
-    """`--jsonl` keeps going if a stat() call raises OSError."""
+    """`--jsonl` records per-match stat errors in the result envelope."""
     _build_tree(tmp_path)
     real_stat = __import__("pathlib").Path.stat
 
@@ -288,9 +559,10 @@ def test_find_jsonl_handles_stat_oserror(tmp_path, monkeypatch):
     monkeypatch.setattr("pathlib.Path.stat", boom)
     result = runner.invoke(app, ["find", "*.py", "--base", str(tmp_path), "--jsonl"])
     assert result.exit_code == 0
-    lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    a_line = next(obj for obj in lines if obj["path"].endswith("a.py"))
-    assert a_line["size"] == 0
+    payload = json.loads(result.stdout)
+    a_match = next(obj for obj in payload["results"] if obj["path"].endswith("a.py"))
+    assert a_match["size"] == 0
+    assert a_match["errors"][0]["code"] == "PERM"
 
 
 def test_main_entrypoint_runs(monkeypatch):

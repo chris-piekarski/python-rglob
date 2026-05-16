@@ -9,13 +9,20 @@ PYTHON ?= $(if $(wildcard .venv/bin/python),$(CURDIR)/.venv/bin/python,python3)
 MKDOCS ?= $(if $(wildcard .venv/bin/mkdocs),$(CURDIR)/.venv/bin/mkdocs,mkdocs)
 PACKAGE := rglob
 
-.PHONY: help build lint test fmt docs docs-build dev-setup clean
+.PHONY: help repo-stats build publish lint test bench fmt docs docs-build dev-setup clean
 
 help:  ## Show this help menu
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
+repo-stats:  ## Update OVERVIEW.md with repo LOC stats and Mermaid chart
+	$(PYTHON) -m scripts.generate_repo_stats
+
 build:  ## Build sdist + wheel into dist/ (uses hatch)
 	$(PYTHON) -m hatch build
+
+publish: build  ## Check and upload dist/* to PyPI via twine
+	$(PYTHON) -m twine check dist/*
+	$(PYTHON) -m twine upload dist/*
 
 lint:  ## Run ruff + mypy --strict (gating)
 	$(PYTHON) -m ruff check .
@@ -25,6 +32,10 @@ lint:  ## Run ruff + mypy --strict (gating)
 test:  ## Run pytest with coverage + behave (gating; local 100% coverage)
 	$(PYTHON) -m pytest --cov=$(PACKAGE) --cov-branch --cov-report=term-missing --cov-fail-under=100
 	$(PYTHON) -m behave
+
+bench:  ## Run pytest-benchmark performance checks
+	@$(PYTHON) -c "import pytest_benchmark" >/dev/null 2>&1 || { echo "Install benchmark dependencies with: make dev-setup"; exit 1; }
+	$(PYTHON) -m pytest bench/ --benchmark-only
 
 fmt:  ## Auto-format with ruff (modifies files in place)
 	$(PYTHON) -m ruff format .

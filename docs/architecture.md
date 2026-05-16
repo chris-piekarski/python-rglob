@@ -219,7 +219,7 @@ classDiagram
     class rglob {
         <<module>>
         +__version__: "2.0.0"
-        +find(base, patterns, *, exclude, max_depth, hidden, follow_symlinks, case_sensitive, sort, on_error, kinds, min_size, max_size, newer_than, older_than, respect_gitignore) Iterator~Path~
+        +find(base, patterns, *, exclude, max_depth, hidden, follow_symlinks, case_sensitive, sort, on_error, kinds, min_size, max_size, newer_than, older_than, newer_than_file, perm, uid, gid, respect_gitignore) Iterator~Path~
         +find_all(...) list~Path~
         +rglob(base, pattern) list~Path~
         +rglob_(pattern) list~Path~
@@ -234,12 +234,30 @@ classDiagram
     class CLI {
         <<typer.Typer app>>
         +find(patterns, ...) None
+        +grep(pattern, files_or_globs, ...) None
+        +count(patterns, ...) None
         +lcount(pattern, ...) None
         +tsize(pattern, ...) None
         +stats(pattern, ...) None
         +tree(pattern, ...) None
         +top(pattern, ...) None
         +dupes(pattern, ...) None
+        +describe(subcommand) None
+        +schema(subcommand) None
+        +capabilities() None
+        +agent_version() None
+        +mcp() None
+    }
+
+    class agent {
+        <<stable API>>
+        +__agent_api_version__: "1.0"
+        +search(WalkOptions) Iterator~FileMatch~
+        +search_all(WalkOptions) FileSearchResult
+        +grep(GrepOptions) Iterator~LineMatch~
+        +grep_all(GrepOptions) LineSearchResult
+        +count(CountOptions) Stats
+        +find_duplicates(WalkOptions) DuplicateSearchResult
     }
 
     class _filters {
@@ -261,11 +279,28 @@ classDiagram
     }
 
     CLI ..> rglob : calls
+    CLI ..> agent : structured JSON
     rglob ..> _filters : uses
     CLI ..> _dupes : uses
 ```
 
-The user-facing surface is intentionally small: one module-level `find()`
-generator plus six legacy compatibility helpers, all importable directly
-from `rglob`. Internal modules (`_filters`, `_dupes`) are prefixed with
-`_` and not re-exported.
+The human-facing `rglob` module stays compact, while `rglob.agent` is the
+SemVer-locked integration surface for coding agents. Internal modules
+(`_filters`, `_dupes`, `_grep`, `_count`) remain implementation details.
+
+## MCP request lifecycle
+
+```mermaid
+sequenceDiagram
+    participant Host as MCP host
+    participant Server as rglob mcp
+    participant Agent as rglob.agent
+    participant Walker as find / grep / count
+
+    Host->>Server: tool call (find_files, grep_content, ...)
+    Server->>Agent: build Options dataclass
+    Agent->>Walker: execute read-only search
+    Walker-->>Agent: matches, stats, or errors
+    Agent-->>Server: SearchResult / Stats dataclass
+    Server-->>Host: JSON-safe dict via to_json_dict()
+```

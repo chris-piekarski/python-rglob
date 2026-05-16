@@ -44,6 +44,26 @@ def test_three_way_duplicates(tmp_path):
     assert set(groups[0]) == set(files)
 
 
+def test_timeout_check_runs_during_hash_pipeline(tmp_path):
+    """Duplicate hashing invokes the optional timeout hook while reading."""
+    payload = b"X" * 5000
+    a = tmp_path / "a.bin"
+    b = tmp_path / "b.bin"
+    a.write_bytes(payload)
+    b.write_bytes(payload)
+    calls = 0
+
+    def check_timeout():
+        nonlocal calls
+        calls += 1
+
+    groups = find_duplicates([a, b], timeout_check=check_timeout)
+
+    assert len(groups) == 1
+    assert set(groups[0]) == {a, b}
+    assert calls > 0
+
+
 def test_partial_overlap(tmp_path):
     """First 4 KiB match but full bytes differ → not a group."""
     head = b"X" * 4096

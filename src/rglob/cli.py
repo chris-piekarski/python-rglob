@@ -12,12 +12,31 @@ import json
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 from rich.console import Console
 
 from rglob import find as _find
+from rglob._count import count_all
+from rglob._grep import grep_all
+from rglob.agent._introspection import (
+    all_schemas,
+    capability_report,
+    command_schema,
+    describe_command,
+    json_ready,
+    unknown_command_envelope,
+)
+from rglob.agent._models import (
+    AGENT_API_VERSION,
+    CountOptions,
+    ErrorCode,
+    ErrorInfo,
+    GrepOptions,
+    to_json_dict,
+)
+from rglob.agent._runtime import collect_file_search
 from rglob.rglob import (
     gigabytes,
     kilobytes,
@@ -101,6 +120,82 @@ def _resolve_case_sensitive(value: bool | None) -> bool | None:
     return value
 
 
+def _emit_json(payload: object) -> None:
+    """Write stable JSON to stdout without Rich styling."""
+    sys.stdout.write(json.dumps(json_ready(payload), indent=2, sort_keys=True) + "\n")
+
+
+def _emit_jsonl(payload: object) -> None:
+    """Write one compact JSON object line."""
+    sys.stdout.write(json.dumps(json_ready(payload), sort_keys=True) + "\n")
+
+
+def _emit_grep_jsonl_stream(opts: GrepOptions) -> None:
+    """Stream grep matches as JSONL records, then a final summary line.
+
+    Each match emits as a compact JSON object on its own line (so agents
+    can begin processing without buffering the whole result). When the
+    search completes, a final summary line is emitted with `truncated`,
+    `truncated_reason`, `total_files_searched`, `bytes_read`, and
+    `errors` so the consumer knows the stream is complete and how much
+    work happened. Each record carries a `kind` field (``"match"`` or
+    ``"summary"``) for easy dispatch.
+    """
+    # Single pass over the underlying search; we iterate the materialised
+    # results list so future refactors that make `grep_iter` truly lazy
+    # can swap in here without changing the wire format.
+    result = grep_all(opts)
+    for match in result.results:
+        # `json_ready` returns a JsonValue union; for a dataclass input
+        # it's always a dict. The cast keeps mypy strict happy without
+        # narrowing the return-type contract of `json_ready` itself.
+        from typing import cast
+
+        match_payload = cast("dict[str, object]", json_ready(match))
+        sys.stdout.write(json.dumps({"kind": "match", **match_payload}, sort_keys=True) + "\n")
+        sys.stdout.flush()
+    sys.stdout.write(
+        json.dumps(
+            {
+                "kind": "summary",
+                "truncated": result.truncated,
+                "truncated_reason": result.truncated_reason,
+                "total_files_searched": result.total_files_searched,
+                "bytes_read": result.bytes_read,
+                "errors": [json_ready(e) for e in result.errors],
+            },
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def _exit_bad_predicate(message: str, *, structured: bool) -> NoReturn:
+    """Exit with either a machine-readable or human-readable predicate error."""
+    if structured:
+        _emit_json(
+            {
+                "ok": False,
+                "error": to_json_dict(ErrorInfo(ErrorCode.BAD_PREDICATE, message, None)),
+            }
+        )
+        raise typer.Exit(code=2)
+    _err.print(f"[red]error:[/red] {message}")
+    raise typer.Exit(code=2)
+
+
+def _parse_size_option(value: str | None, *, structured: bool) -> int | None:
+    """Parse a size option for structured commands."""
+    if value is None:
+        return None
+    from rglob._filters import parse_size
+
+    try:
+        return parse_size(value)
+    except ValueError as exc:
+        _exit_bad_predicate(str(exc), structured=structured)
+
+
 def _format_path(path: Path, fmt: str | None, base: Path) -> str:
     """Render a path according to the optional `--format` template."""
     if fmt is None:
@@ -162,14 +257,52 @@ def find(
         str | None,
         typer.Option("--older-than", help='ISO date or duration like "30d".'),
     ] = None,
-    json_out: Annotated[bool, typer.Option("--json", help="Emit a JSON array of paths.")] = False,
+    newer_than_file: Annotated[
+        Path | None,
+        typer.Option("--newer-than-file", help="Only entries newer than this file."),
+    ] = None,
+    perm: Annotated[
+        str | None,
+        typer.Option("--perm", help='POSIX mode filter, e.g. "644", "-111", "/222".'),
+    ] = None,
+    uid: Annotated[
+        int | None,
+        typer.Option("--uid", help="POSIX owner uid filter."),
+    ] = None,
+    gid: Annotated[
+        int | None,
+        typer.Option("--gid", help="POSIX owner gid filter."),
+    ] = None,
+    json_out: Annotated[
+        bool,
+        typer.Option("--json", help="Emit a FileSearchResult JSON object."),
+    ] = False,
     jsonl: Annotated[
         bool,
         typer.Option(
             "--jsonl",
-            help="Emit one JSON object per line ({'path': ..., 'size': ...}).",
+            help="Emit one compact FileSearchResult JSON object line.",
         ),
     ] = False,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", min=1, help="Maximum structured records to emit."),
+    ] = None,
+    max_bytes: Annotated[
+        str | None,
+        typer.Option("--max-bytes", help="Maximum structured output bytes."),
+    ] = None,
+    max_file_size: Annotated[
+        str | None,
+        typer.Option("--max-file-size", help="Skip files larger than this."),
+    ] = None,
+    include_errors: Annotated[
+        bool,
+        typer.Option(
+            "--include-errors/--no-include-errors",
+            help="Include per-record errors in structured output.",
+        ),
+    ] = True,
     null: Annotated[
         bool,
         typer.Option("-0", "--null", help="Separate paths with NUL bytes (xargs -0)."),
@@ -188,6 +321,8 @@ def find(
 
     from rglob._filters import Kind
 
+    max_bytes_value = _parse_size_option(max_bytes, structured=json_out or jsonl)
+
     matches = _find(
         base,
         patterns,
@@ -196,27 +331,41 @@ def find(
         hidden=hidden,
         follow_symlinks=follow,
         case_sensitive=_resolve_case_sensitive(case_sensitive),
-        on_error="warn",
+        on_error="ignore" if json_out or jsonl else "warn",
         kinds=cast("list[Kind]", kind),
         min_size=min_size,
-        max_size=max_size,
+        max_size=max_file_size or max_size,
         newer_than=newer_than,
         older_than=older_than,
+        newer_than_file=newer_than_file,
+        perm=perm,
+        uid=uid,
+        gid=gid,
         respect_gitignore=gitignore,
     )
 
     if json_out:
-        paths = [str(p) for p in matches]
-        _console.print_json(json.dumps(paths))
+        _emit_json(
+            collect_file_search(
+                matches,
+                base=base,
+                limit=limit,
+                max_bytes=max_bytes_value,
+                include_errors=include_errors,
+            )
+        )
         return
 
     if jsonl:
-        for path in matches:
-            try:
-                size = path.stat().st_size if path.is_file() else 0
-            except OSError:
-                size = 0
-            sys.stdout.write(json.dumps({"path": str(path), "size": size}) + "\n")
+        _emit_jsonl(
+            collect_file_search(
+                matches,
+                base=base,
+                limit=limit,
+                max_bytes=max_bytes_value,
+                include_errors=include_errors,
+            )
+        )
         return
 
     if null:
@@ -226,6 +375,211 @@ def find(
 
     for path in matches:
         print(_format_path(path, fmt, base))
+
+
+# ─── grep / count ────────────────────────────────────────────────────────────
+
+
+@app.command(help="Search file contents for a regex or fixed string.")
+def grep(
+    pattern: Annotated[str, typer.Argument(help="Regex or fixed string to search for.")],
+    files_or_globs: Annotated[
+        list[str],
+        typer.Argument(help='File glob(s) to search, e.g. "src/**/*.py".'),
+    ] = [],
+    base: BaseOpt = Path.cwd(),
+    exclude: ExcludeOpt = [],
+    max_depth: MaxDepthOpt = None,
+    hidden: HiddenOpt = False,
+    follow: FollowOpt = False,
+    case_sensitive: CaseSensitiveOpt = None,
+    gitignore: GitignoreOpt = False,
+    fixed_string: Annotated[
+        bool,
+        typer.Option("-F", "--fixed-string", help="Treat pattern as a literal string."),
+    ] = False,
+    ignore_case: Annotated[
+        bool,
+        typer.Option("-i", "--ignore-case", help="Match content case-insensitively."),
+    ] = False,
+    context: Annotated[int, typer.Option("-C", "--context", min=0, help="Context lines.")] = 0,
+    before: Annotated[int, typer.Option("-B", "--before", min=0, help="Lines before.")] = 0,
+    after: Annotated[int, typer.Option("-A", "--after", min=0, help="Lines after.")] = 0,
+    max_count: Annotated[
+        int | None,
+        typer.Option("-m", "--max-count", min=1, help="Maximum matches to return."),
+    ] = None,
+    word: Annotated[bool, typer.Option("-w", "--word", help="Match whole words.")] = False,
+    invert: Annotated[bool, typer.Option("-v", "--invert", help="Invert the match.")] = False,
+    encoding: Annotated[str, typer.Option("--encoding", help="Text encoding.")] = "utf-8",
+    text: Annotated[
+        bool,
+        typer.Option("-a", "--text", help="Search binary files as text."),
+    ] = False,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", min=1, help="Maximum structured matches to emit."),
+    ] = None,
+    max_bytes: Annotated[
+        str | None,
+        typer.Option("--max-bytes", help="Maximum bytes to read."),
+    ] = None,
+    max_file_size: Annotated[
+        str | None,
+        typer.Option("--max-file-size", help="Skip files larger than this."),
+    ] = None,
+    files_with_matches_flag: Annotated[
+        bool,
+        typer.Option(
+            "-l",
+            "--files-with-matches",
+            help="Emit one record per matching file, no per-line content.",
+        ),
+    ] = False,
+    count_only_flag: Annotated[
+        bool,
+        typer.Option(
+            "-c",
+            "--count-only",
+            help="Emit one record per matching file with the match count.",
+        ),
+    ] = False,
+    json_out: Annotated[bool, typer.Option("--json", help="Emit a LineSearchResult.")] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option(
+            "--jsonl",
+            help="Stream one LineMatch per line, then a final summary line.",
+        ),
+    ] = False,
+) -> None:
+    """Search matching files and print content matches."""
+    if files_with_matches_flag and count_only_flag:
+        _err.print(
+            "[red]error:[/red] --files-with-matches and --count-only are mutually exclusive",
+            highlight=False,
+        )
+        raise typer.Exit(code=2)
+    structured = json_out or jsonl
+    opts = GrepOptions(
+        pattern=pattern,
+        paths=files_or_globs or ["*"],
+        base=base,
+        exclude=exclude,
+        max_depth=max_depth,
+        hidden=hidden,
+        follow_symlinks=follow,
+        case_sensitive=_resolve_case_sensitive(case_sensitive),
+        respect_gitignore=gitignore,
+        fixed_string=fixed_string,
+        ignore_case=ignore_case,
+        context=context,
+        before=before,
+        after=after,
+        max_count=max_count,
+        word=word,
+        invert=invert,
+        encoding=encoding,
+        text=text,
+        limit=limit,
+        max_bytes=_parse_size_option(max_bytes, structured=structured),
+        max_file_size=_parse_size_option(max_file_size, structured=structured),
+        files_with_matches=files_with_matches_flag,
+        count_only=count_only_flag,
+    )
+
+    # Streaming JSONL emits each match as it's found, then a final
+    # summary record so consumers don't have to buffer the whole result.
+    if jsonl:
+        _emit_grep_jsonl_stream(opts)
+        return
+
+    result = grep_all(opts)
+
+    if json_out:
+        _emit_json(result)
+        return
+
+    if files_with_matches_flag:
+        for match in result.results:
+            print(match.path)
+    elif count_only_flag:
+        for match in result.results:
+            print(f"{match.path}:{match.line_number}")
+    else:
+        for match in result.results:
+            print(f"{match.path}:{match.line_number}:{match.content}")
+    for error in result.errors:
+        _err.print(f"[yellow]warning:[/yellow] {error.code}: {error.message}", highlight=False)
+
+
+@app.command(help="Count files, lines, and bytes for matching files.")
+def count(
+    patterns: Annotated[
+        list[str],
+        typer.Argument(help='Glob pattern(s), e.g. "*.py".', show_default=False),
+    ],
+    base: BaseOpt = Path.cwd(),
+    exclude: ExcludeOpt = [],
+    max_depth: MaxDepthOpt = None,
+    hidden: HiddenOpt = False,
+    follow: FollowOpt = False,
+    case_sensitive: CaseSensitiveOpt = None,
+    gitignore: GitignoreOpt = False,
+    no_empty: Annotated[bool, typer.Option("--no-empty", help="Skip empty lines.")] = False,
+    no_comments: Annotated[
+        bool,
+        typer.Option("--no-comments", help="Skip lines starting with `#`."),
+    ] = False,
+    encoding: Annotated[str, typer.Option("--encoding", help="Text encoding.")] = "utf-8",
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", min=1, help="Maximum files to count."),
+    ] = None,
+    max_bytes: Annotated[
+        str | None,
+        typer.Option("--max-bytes", help="Maximum bytes to read."),
+    ] = None,
+    max_file_size: Annotated[
+        str | None,
+        typer.Option("--max-file-size", help="Skip files larger than this."),
+    ] = None,
+    json_out: Annotated[bool, typer.Option("--json", help="Emit a Stats object.")] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option("--jsonl", help="Emit one compact Stats object line."),
+    ] = False,
+) -> None:
+    """Print structured file, line, and byte counts."""
+    structured = json_out or jsonl
+    opts = CountOptions(
+        patterns=patterns,
+        base=base,
+        exclude=exclude,
+        max_depth=max_depth,
+        hidden=hidden,
+        follow_symlinks=follow,
+        case_sensitive=_resolve_case_sensitive(case_sensitive),
+        respect_gitignore=gitignore,
+        no_empty=no_empty,
+        no_comments=no_comments,
+        encoding=encoding,
+        limit=limit,
+        max_bytes=_parse_size_option(max_bytes, structured=structured),
+        max_file_size=_parse_size_option(max_file_size, structured=structured),
+    )
+    result = count_all(opts)
+
+    if json_out:
+        _emit_json(result)
+        return
+    if jsonl:
+        _emit_jsonl(result)
+        return
+
+    print(f"Files: {result.files}")
+    print(f"Lines: {result.lines}")
+    print(f"Bytes: {result.bytes}")
 
 
 # ─── lcount ───────────────────────────────────────────────────────────────────
@@ -405,7 +759,7 @@ def top(
     table.add_column("Size (MiB)", justify="right")
     table.add_column("Path", style="green")
     for rank, (size, path) in enumerate(top_n, start=1):
-        table.add_row(str(rank), f"{megabytes(size):.3f}", str(path))
+        table.add_row(str(rank), f"{megabytes(size):.3f}", path.name)
     _console.print(table)
 
 
@@ -451,8 +805,83 @@ def dupes(
             size = group[0].stat().st_size
         except OSError:  # pragma: no cover - races between scan and display
             size = 0
-        table.add_row(str(idx), f"{megabytes(size):.3f}", "\n".join(str(p) for p in group))
+        table.add_row(str(idx), f"{megabytes(size):.3f}", "\n".join(p.name for p in group))
     _console.print(table)
+
+
+# ─── Agent introspection ─────────────────────────────────────────────────────
+
+
+@app.command(help="Describe a subcommand as a stable JSON manifest.")
+def describe(
+    subcommand: Annotated[str, typer.Argument(help="Subcommand to describe.")],
+) -> None:
+    """Print a machine-readable command manifest."""
+    try:
+        _emit_json(describe_command(subcommand))
+    except ValueError:
+        _emit_json(unknown_command_envelope(subcommand))
+        raise typer.Exit(code=2) from None
+
+
+@app.command(help="Print input and output JSON Schemas for a subcommand.")
+def schema(
+    subcommand: Annotated[str | None, typer.Argument(help="Subcommand to inspect.")] = None,
+    all_: Annotated[
+        bool,
+        typer.Option("--all", help="Print every public agent JSON Schema."),
+    ] = False,
+) -> None:
+    """Print a command's input and output schemas."""
+    if all_:
+        _emit_json(all_schemas())
+        return
+    if subcommand is None:
+        _emit_json(unknown_command_envelope("<missing>"))
+        raise typer.Exit(code=2) from None
+    try:
+        _emit_json(command_schema(subcommand))
+    except ValueError:
+        _emit_json(unknown_command_envelope(subcommand))
+        raise typer.Exit(code=2) from None
+
+
+@app.command(help="Report installed agent-facing capabilities as JSON.")
+def capabilities(
+    json_out: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Accepted for explicit machine callers; output is always JSON.",
+        ),
+    ] = False,
+) -> None:
+    """Print the agent capability report."""
+    _ = json_out
+    _emit_json(capability_report())
+
+
+@app.command(help="Print the current agent API version as JSON.")
+def agent_version() -> None:
+    """Print the current agent API version."""
+    _emit_json(AGENT_API_VERSION)
+
+
+@app.command(help="Run the rglob stdio MCP server.")
+def mcp() -> None:
+    """Launch the optional stdio MCP server."""
+    try:
+        from rglob.agent.mcp import main as mcp_main
+
+        mcp_main()
+    except RuntimeError as exc:
+        _emit_json(
+            {
+                "ok": False,
+                "error": to_json_dict(ErrorInfo(ErrorCode.UNSUPPORTED_PLATFORM, str(exc), None)),
+            }
+        )
+        raise typer.Exit(code=2) from exc
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

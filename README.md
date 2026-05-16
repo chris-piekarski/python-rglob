@@ -9,28 +9,32 @@
      /____/
 ```
 
-<p align="center"><em>Lightweight recursive glob helpers for Python — find files, count lines, sum sizes.</em></p>
+<p align="center"><em>Lightweight recursive search for Python, CLIs, and coding agents.</em></p>
 
 <p align="center">
   <a href="https://pypi.org/project/rglob/"><img alt="PyPI" src="https://img.shields.io/pypi/v/rglob.svg"></a>
   <a href="https://pypi.org/project/rglob/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/rglob.svg"></a>
+  <a href="https://pypi.org/project/rglob/"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/rglob.svg"></a>
+  <a href="https://github.com/chris-piekarski/python-rglob/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/chris-piekarski/python-rglob?style=social"></a>
   <a href="https://github.com/chris-piekarski/python-rglob/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/chris-piekarski/python-rglob/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://codecov.io/gh/chris-piekarski/python-rglob"><img alt="Coverage" src="https://codecov.io/gh/chris-piekarski/python-rglob/branch/master/graph/badge.svg"></a>
   <a href="https://github.com/chris-piekarski/python-rglob/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json"></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code style: ruff" src="https://img.shields.io/badge/code%20style-ruff-000000.svg"></a>
+  <a href="https://chris-piekarski.github.io/python-rglob/"><img alt="Docs" src="https://img.shields.io/badge/docs-MkDocs%20Material-blue.svg"></a>
 </p>
 
 ---
 
 ## Why use this?
 
-Modern Python has `pathlib.Path.rglob` and `glob.glob(..., recursive=True)`, and
-external tools like `fd` and `ripgrep` are blazingly fast. `rglob` predates
-most of those and has stuck around because it's tiny, easy to read, and ships
-with friendly helpers for the two things you usually want next: **count
-lines** and **sum sizes**. The redundancy is part of the fun — this is a
-labor-of-love package.
+Modern Python has `pathlib.Path.rglob`, and external tools like `fd` and
+`ripgrep` are blazingly fast. `rglob` is smaller and more embeddable: filename
+globbing, content grep, count/stat helpers, stable JSON schemas, a typed
+`rglob.agent` namespace, and an optional MCP server.
+
+It is designed to be a default recursive-search dependency for coding agents
+that need predictable outputs, bounded result shapes, and read-only behavior.
 
 ## Installation
 
@@ -69,6 +73,17 @@ non_empty_non_comment = rglob.lcount(
 total_mb = rglob.tsize("/path/to/photos", "*.jpg", rglob.megabytes)
 ```
 
+Agent integrations should import from the stable `rglob.agent` namespace:
+
+```python
+from pathlib import Path
+
+from rglob.agent import GrepOptions, WalkOptions, grep_all, search_all
+
+files = search_all(WalkOptions(patterns=["*.py"], base=Path("src")))
+todos = grep_all(GrepOptions(pattern="TODO", paths=["*.py"], base=Path("src")))
+```
+
 Paths are sorted by default for deterministic output. Pass `sort=False` for
 raw `scandir` order. Recursive `**` globs work
 (`rglob.find_all("src", "**/*.py")`); symlink loops are detected and
@@ -91,7 +106,7 @@ rglob find "*.py" "*.pyx"
 rglob find "*.py" --base ./src --exclude .venv -d 3 --hidden
 
 # Output formats
-rglob find "*.py" --json | jq '.[]'
+rglob find "*.py" --json | jq '.results[] | .path'
 rglob find "*.py" --jsonl
 rglob find "*.py" -0 | xargs -0 wc -l       # NUL-separated for xargs
 
@@ -101,8 +116,22 @@ rglob find "*.py" --format "{name}: {size_mb:.2f} MiB"
 # Count lines, skipping empties and comment lines
 rglob lcount "*.py" --no-empty --no-comments
 
+# Grep content and count structured stats
+rglob grep TODO "*.py" --context 2 --json
+rglob count "*.py" --no-empty --no-comments --json
+
 # Sum total size in MB
 rglob tsize "*.py" --unit mb
+
+# Machine discovery for agents
+rglob describe find
+rglob schema grep
+rglob schema --all
+rglob capabilities --json
+
+# MCP server
+pip install "rglob[mcp]"
+rglob mcp
 
 # Shell completion (one-time setup)
 rglob --install-completion bash    # or zsh / fish / powershell
@@ -153,6 +182,8 @@ Full docs (API reference, CLI reference, architecture diagrams, ADRs) live in
 [`docs/`](docs/) and are published as a MkDocs Material site at
 <https://chris-piekarski.github.io/python-rglob/>.
 
+- [Agent integration](docs/agents/index.md) — CLI JSON, Python API, MCP, safety,
+  and stability guidance for coding agents.
 - [Modernization roadmap](docs/plans/modernization-roadmap.md) — the six-phase
   plan that delivered 2.0.
 - [Migrating to 2.0](docs/migrating-to-2.0.md) — the `list[str]` → `list[Path]`

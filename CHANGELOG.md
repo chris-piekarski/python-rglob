@@ -128,6 +128,60 @@ for the one-line `str ↔ Path` migration.
   predicates, `.gitignore` matcher) and `src/rglob/_dupes.py`
   (duplicate-finding pipeline).
 
+### Added (Agent platform Phase 0 — Contract and schemas)
+- ADR-0009 documents the SemVer-locked agent API contract for `rglob.agent`,
+  structured CLI JSON, JSON Schemas, and MCP tools.
+- ADR-0010 documents the read-only safety model for agent and MCP use:
+  base containment, symlink behavior, content disclosure, binary files,
+  unreadable paths, output limits, and cooperative timeouts.
+- New frozen, slotted contract models in `src/rglob/agent/_models.py`:
+  `FileMatch`, `LineMatch`, `Stats`, `Duplicate`, `ErrorInfo`, `ErrorCode`,
+  concrete search result envelopes, capability reports, and option models.
+- Runtime JSON Schema Draft 2020-12 generation from
+  `src/rglob/agent/_models.py`, exposed through `rglob.agent.schema_for`,
+  `rglob.agent.all_schemas`, `rglob schema <subcommand>`, and
+  `rglob schema --all`.
+- New machine-readable CLI endpoints:
+  `rglob describe <subcommand>`, `rglob schema <subcommand>`,
+  `rglob capabilities --json`, and `rglob agent-version`.
+- `rglob find --json` now emits a `FileSearchResult` object instead of a
+  string array. `rglob find --jsonl` emits the same result shape as one
+  compact JSON object line.
+- New shared golden fixture tree at `tests/fixtures/agent-tree/` for agent
+  contract, binary, hidden-file, gitignore, unreadable-path, and duplicate
+  scenarios.
+
+### Added (Agent platform Phase 1 — Scope expansion)
+- New `rglob grep` command and `src/rglob/_grep.py` content matcher returning
+  `LineSearchResult` records.
+- New `rglob count` command and structured `Stats` output for files, lines,
+  and bytes.
+- `find()` and `rglob find` gained `--perm`, `--uid`, `--gid`, and
+  `--newer-than-file` predicates.
+- `rglob grep` supports fixed strings, ignore-case, context, max-count,
+  word, invert, encoding, binary-as-text, limits, and JSON / JSONL output.
+
+### Added (Agent platform Phase 2 — Python API)
+- New stable `rglob.agent` namespace exporting the agent dataclasses,
+  `__agent_api_version__`, `search`, `search_all`, `grep`, `grep_all`,
+  `count`, and `find_duplicates`.
+- Agent API operational errors are represented as `ErrorInfo` records instead
+  of raising for bad predicates, unreadable files, binary skips, and regex
+  failures.
+
+### Added (Agent platform Phase 3 — MCP)
+- New optional `mcp` extra: `pip install "rglob[mcp]"`.
+- New `rglob mcp` command and `src/rglob/agent/mcp.py` stdio MCP server.
+- MCP tools: `find_files`, `grep_content`, `count_lines`,
+  `find_duplicate_files`, and `describe_subcommand`.
+
+### Added (Agent platform Phase 4 — Documentation)
+- New `docs/agents/` pages for Python API usage, MCP setup, CLI recipes,
+  stability, and safety.
+- New `docs/examples/agent-recipes.md` with copy-paste agent workflows.
+- `AGENTS.md` now includes consumer guidance for agents using `rglob`, in
+  addition to contributor instructions for agents editing this repository.
+
 ## Historical releases (pre-2.0)
 
 Earlier releases (`1.2`–`1.7`, plus a `v1.8` tag with no matching source bump)

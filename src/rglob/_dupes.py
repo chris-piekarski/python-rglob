@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
+
+TimeoutCheck = Callable[[], None]
 
 
 def _fast_hash(data: bytes) -> str:
@@ -42,26 +44,40 @@ def _fast_hash(data: bytes) -> str:
 _HEAD_BYTES = 4 * 1024
 
 
-def _hash_head(path: Path) -> str:
+def _check_timeout(timeout_check: TimeoutCheck | None) -> None:
+    """Run the duplicate timeout hook when one was supplied."""
+    if timeout_check is not None:
+        timeout_check()
+
+
+def _hash_head(path: Path, *, timeout_check: TimeoutCheck | None = None) -> str:
     """Hash the first 4 KiB of a file."""
+    _check_timeout(timeout_check)
     with path.open("rb") as fp:
         chunk = fp.read(_HEAD_BYTES)
+    _check_timeout(timeout_check)
     return _fast_hash(chunk)
 
 
-def _hash_full(path: Path) -> str:
+def _hash_full(path: Path, *, timeout_check: TimeoutCheck | None = None) -> str:
     """Hash the entire file in 64 KiB chunks."""
     hasher_state = hashlib.blake2b(digest_size=16)
     with path.open("rb") as fp:
         while True:
+            _check_timeout(timeout_check)
             chunk = fp.read(64 * 1024)
             if not chunk:
                 break
             hasher_state.update(chunk)
+    _check_timeout(timeout_check)
     return hasher_state.hexdigest()
 
 
-def find_duplicates(paths: Iterable[Path]) -> list[list[Path]]:
+def find_duplicates(
+    paths: Iterable[Path],
+    *,
+    timeout_check: TimeoutCheck | None = None,
+) -> list[list[Path]]:
     """Group paths by content equivalence.
 
     Returns a list of groups, where each group contains 2+ paths sharing
@@ -71,6 +87,7 @@ def find_duplicates(paths: Iterable[Path]) -> list[list[Path]]:
     by_size: dict[int, list[Path]] = defaultdict(list)
     for path in paths:
         try:
+            _check_timeout(timeout_check)
             if not path.is_file():
                 continue
             by_size[path.stat().st_size].append(path)
@@ -84,7 +101,8 @@ def find_duplicates(paths: Iterable[Path]) -> list[list[Path]]:
         by_head: dict[str, list[Path]] = defaultdict(list)
         for path in group:
             try:
-                by_head[_hash_head(path)].append(path)
+                _check_timeout(timeout_check)
+                by_head[_hash_head(path, timeout_check=timeout_check)].append(path)
             except OSError:  # pragma: no cover - rare
                 continue
         candidates.extend(head_group for head_group in by_head.values() if len(head_group) >= 2)
@@ -94,7 +112,8 @@ def find_duplicates(paths: Iterable[Path]) -> list[list[Path]]:
         by_full: dict[str, list[Path]] = defaultdict(list)
         for path in group:
             try:
-                by_full[_hash_full(path)].append(path)
+                _check_timeout(timeout_check)
+                by_full[_hash_full(path, timeout_check=timeout_check)].append(path)
             except OSError:  # pragma: no cover - rare
                 continue
         final_groups.extend(
