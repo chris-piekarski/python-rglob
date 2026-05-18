@@ -130,7 +130,8 @@ hit **100%**. Locally the gate is 100% on a single Linux run. See
 ## Where to look first
 
 - **Roadmap**: [`docs/plans/modernization-roadmap.md`](docs/plans/modernization-roadmap.md)
-  is the source of truth for in-flight work. When in doubt, read it.
+  records the six-phase plan (plus the agent-platform sub-phases) that
+  delivered 2.0. Useful as historical context when changing a subsystem.
 - **Decisions log**: [`docs/decisions/`](docs/decisions/) captures the
   locked-in choices (build backend, Python floor, Path return, Typer
   rationale, coverage strategy, behave-as-parallel, security model).

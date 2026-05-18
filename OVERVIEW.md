@@ -7,43 +7,46 @@ the `REPO-STATS` markers is hand-written.
 
 ## Repository Stats
 
-- Code LOC (approx): 24,288
-- Total lines (tracked files): 26,370
+- Code LOC (approx): 9,919
+- Total lines (tracked files): 12,482
 
 ```mermaid
 pie title Code LOC by Area
-  "src" : 18485
-  "tests" : 2185
-  "docs" : 1982
-  "other" : 1126
-  "scripts" : 348
-  "features" : 162
+  "src" : 3212
+  "tests" : 2846
+  "docs" : 2038
+  "other" : 1181
+  "features" : 282
+  "scripts" : 196
+  "bench" : 164
 ```
 
 ### LOC by Area
 | Area | Code LOC | Total Lines |
 |------|----------|-------------|
-| src | 18,485 | 18,986 |
-| tests | 2,185 | 2,927 |
-| docs | 1,982 | 2,463 |
-| other | 1,126 | 1,346 |
-| scripts | 348 | 436 |
-| features | 162 | 212 |
+| src | 3,212 | 3,864 |
+| tests | 2,846 | 3,815 |
+| docs | 2,038 | 2,526 |
+| other | 1,181 | 1,410 |
+| features | 282 | 368 |
+| scripts | 196 | 249 |
+| bench | 164 | 250 |
 
 ### Code LOC by Module (Python only)
 ```mermaid
 pie title Code LOC by Module (src/rglob, Python only)
-  "root" : 1736
-  "agent" : 864
+  "root" : 2047
+  "agent" : 1165
 ```
 
 ### Top Python Modules (src/rglob)
 | Module (src/rglob, .py only) | Code LOC | Total Lines |
 |------------------------------|----------|-------------|
-| root | 1,736 | 2,081 |
-| agent | 864 | 1,020 |
+| root | 2,047 | 2,506 |
+| agent | 1,165 | 1,358 |
 
 _Note: LOC approximates non-blank, non-comment lines. Module breakdown counts only Python files._
 
 <!-- END: REPO-STATS -->
+
 

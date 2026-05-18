@@ -13,11 +13,6 @@ make test          # pytest + behave, gated at 100% coverage
 make lint          # ruff + mypy --strict
 ```
 
-> **Note**: the `Makefile` and dev extras are introduced in Phase 2 of the
-> [modernization roadmap](docs/plans/modernization-roadmap.md). Until that lands,
-> use `pip install -e .` and run `pylint src/rglob features` (legacy path) or
-> `behave` directly.
-
 ## Standards we enforce
 
 - **Lint**: `ruff check` and `ruff format --check` must pass.

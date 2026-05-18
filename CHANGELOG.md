@@ -5,7 +5,7 @@ All notable changes to `rglob` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] – 2026-05-14
+## [2.0.0] – 2026-05-18
 
 The 2.0 release lands a top-to-bottom modernization across six phases. See
 [`docs/plans/modernization-roadmap.md`](docs/plans/modernization-roadmap.md)
@@ -21,7 +21,7 @@ for the one-line `str ↔ Path` migration.
 
 ### Added (Phase 1 — Packaging hygiene)
 - PEP 621 metadata in `pyproject.toml` with `hatchling` build backend.
-- Single-source `__version__` in `src/rglob/__init__.py` (currently `2.0.0.dev0`).
+- Single-source `__version__` in `src/rglob/__init__.py` (now `2.0.0`).
 - `src/` layout — package now lives at `src/rglob/`.
 - `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`.
 - Top-level ASCII banner in `README.md`; refreshed badges and sections.

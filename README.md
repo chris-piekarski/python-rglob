@@ -12,15 +12,22 @@
 <p align="center"><em>Lightweight recursive search for Python, CLIs, and coding agents.</em></p>
 
 <p align="center">
+  <!-- Identity -->
   <a href="https://pypi.org/project/rglob/"><img alt="PyPI" src="https://img.shields.io/pypi/v/rglob.svg"></a>
   <a href="https://pypi.org/project/rglob/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/rglob.svg"></a>
-  <a href="https://pypi.org/project/rglob/"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/rglob.svg"></a>
-  <a href="https://github.com/chris-piekarski/python-rglob/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/chris-piekarski/python-rglob?style=social"></a>
+  <!-- Quality -->
   <a href="https://github.com/chris-piekarski/python-rglob/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/chris-piekarski/python-rglob/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://codecov.io/gh/chris-piekarski/python-rglob"><img alt="Coverage" src="https://codecov.io/gh/chris-piekarski/python-rglob/branch/master/graph/badge.svg"></a>
+  <a href="https://mypy-lang.org/"><img alt="mypy: strict" src="https://img.shields.io/badge/mypy-strict-blue.svg"></a>
+  <a href="https://github.com/pre-commit/pre-commit"><img alt="pre-commit" src="https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&amp;logoColor=white"></a>
+  <!-- Standards -->
   <a href="https://github.com/chris-piekarski/python-rglob/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
+  <a href="https://www.conventionalcommits.org/en/v1.0.0/"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg"></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json"></a>
-  <a href="https://github.com/astral-sh/ruff"><img alt="Code style: ruff" src="https://img.shields.io/badge/code%20style-ruff-000000.svg"></a>
+  <!-- Engagement -->
+  <a href="https://github.com/chris-piekarski/python-rglob/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/chris-piekarski/python-rglob?style=flat"></a>
+  <a href="https://pypi.org/project/rglob/"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dm/rglob.svg"></a>
+  <!-- Docs -->
   <a href="https://chris-piekarski.github.io/python-rglob/"><img alt="Docs" src="https://img.shields.io/badge/docs-MkDocs%20Material-blue.svg"></a>
 </p>
 
@@ -58,9 +65,9 @@ paths = rglob.find_all("/repo", "**/*.py", hidden=False, max_depth=4)
 # case-insensitive on macOS/Windows; pass True/False to force)
 paths = rglob.find_all(".", "*.PY", case_sensitive=False)
 
-# Legacy API still works
-files = rglob.rglob("/path/to/project", "*.py")          # → list[str]
-files_cwd = rglob.rglob_("*.py")                          # → list[str]
+# Legacy API still works (now returns list[Path] at 2.0 — see migration guide)
+files = rglob.rglob("/path/to/project", "*.py")          # → list[Path]
+files_cwd = rglob.rglob_("*.py")                          # → list[Path]
 
 # Count non-empty, non-comment lines across matching files
 non_empty_non_comment = rglob.lcount(
@@ -128,8 +135,11 @@ rglob describe find
 rglob schema grep
 rglob schema --all
 rglob capabilities --json
+rglob agent-version       # locked SemVer of the agent contract (see ADR-0009)
 
-# MCP server
+# MCP server (stdio). Exposes `find_files`, `grep_content`, `count_lines`,
+# `find_duplicate_files`, and `describe_subcommand` with read-only,
+# bounded defaults. Full setup in docs/agents/mcp-setup.md.
 pip install "rglob[mcp]"
 rglob mcp
 
@@ -189,7 +199,8 @@ Full docs (API reference, CLI reference, architecture diagrams, ADRs) live in
 - [Migrating to 2.0](docs/migrating-to-2.0.md) — the `list[str]` → `list[Path]`
   return-type flip.
 - [Architecture](docs/architecture.md) — package layout, walker call-graph,
-  and (later) the CLI command hierarchy.
+  CLI command hierarchy, `dupes` pipeline, and the 2.0 public-API class
+  diagram.
 - [Decisions](docs/decisions/) — ADRs for the locked-in design choices.
 
 ## Development
@@ -204,8 +215,9 @@ make lint          # ruff + mypy --strict
 make docs          # live MkDocs preview at :8000
 ```
 
-The legacy `pylint` workflow is being retired during Phase 2 of the roadmap.
-Until then, `pylint src/rglob features` works as a fallback.
+The 2.0 release replaced `pylint` with Ruff as the primary linter and added
+`mypy --strict`. `make lint` runs both; `pylint src/rglob features` still
+works if you want a second opinion.
 
 ## License
 
