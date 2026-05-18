@@ -61,7 +61,16 @@ jobs:
         run: uv pip install --system -e ".[dev,bdd,gitignore,ext]"
 
       - name: Pytest (with coverage)
-        run: pytest --cov=rglob --cov-branch --cov-report=xml --cov-fail-under=95
+        shell: bash
+        run: |
+          # POSIX-only tests (perm bits, executable kind, uid/gid) are
+          # skipped on non-Linux hosts, so the coverage gate only fires
+          # on Ubuntu where the full suite runs.
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            pytest --cov=rglob --cov-branch --cov-report=xml --cov-fail-under=95
+          else
+            pytest --cov=rglob --cov-branch --cov-report=xml
+          fi
 
       - name: Behave (BDD)
         run: behave

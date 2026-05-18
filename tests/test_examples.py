@@ -173,17 +173,23 @@ def test_runnable_example(example: Example) -> None:
 
 
 def _has_bash() -> bool:
-    """Return whether `bash` is on PATH (Windows runners often lack it)."""
+    """Return whether a working `bash` is on PATH.
+
+    Windows ships a `bash.exe` shim in System32 that forwards to WSL; on
+    CI runners without a WSL distro installed that shim exists but exits
+    non-zero. Require a zero exit from `bash -c true` so the stub falls
+    through and the bash-tagged examples are skipped instead of failing.
+    """
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["bash", "-c", "true"],
             capture_output=True,
             check=False,
-            timeout=2,
+            timeout=5,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return False
-    return True
+    return result.returncode == 0
 
 
 _ = shlex  # kept for future quoting helpers; silence unused-import lint

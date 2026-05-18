@@ -27,8 +27,32 @@ make lint          # ruff + mypy --strict
   for genuinely un-coverable lines and document the reason inline.
 - **Conventional commits** are nice but not required.
 
-CI runs the full matrix (Python 3.10–3.13 × Ubuntu/macOS/Windows). Branch
+CI runs the full matrix (Python 3.11–3.14 × Ubuntu/macOS/Windows). Branch
 protection on `master` blocks merges without all checks green.
+
+### Cross-platform test guidelines
+
+The Ubuntu, macOS, and Windows jobs share the same `tests/` tree, so new tests
+must be portable or explicitly opt out:
+
+- **POSIX mode bits** (`chmod`, `os.getuid`, exec-kind detection) — wrap the
+  test in `@posix_only` (defined in `tests/test_filters.py`) or
+  `@pytest.mark.skipif(os.name != "posix", reason=…)`. NTFS does not honour
+  `Path.chmod()` for executable bits.
+- **Filesystem case sensitivity** — APFS (macOS default) and NTFS treat
+  `README.MD` and `readme.md` as one inode. Tests that need both casings as
+  distinct files should request the `case_sensitive_fs` fixture (in
+  `tests/conftest.py`) and `pytest.skip()` when it returns `False`.
+- **Symlinks** — Windows requires Developer Mode or admin to create symlinks.
+  Wrap `Path.symlink_to()` in `try/except (OSError, NotImplementedError)` and
+  `pytest.skip()` on failure.
+- **`bash` subprocesses** — Windows GA runners ship a WSL stub at
+  `C:\Windows\System32\bash.exe` that exits non-zero when no distro is
+  installed. Probe with `bash -c true` and check the return code (see
+  `tests/test_examples.py::_has_bash`).
+
+The `--cov-fail-under=95` gate only fires on Ubuntu because macOS/Windows
+legitimately skip POSIX-only branches.
 
 ## Filing a bug or feature request
 

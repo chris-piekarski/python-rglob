@@ -20,6 +20,10 @@ site/
 venv/
 env/
 
+# uv lock file — rglob is a published library, so deps are declared in
+# pyproject.toml and the lock file is regenerated per-environment.
+uv.lock
+
 # Test / coverage / type caches
 .pytest_cache/
 .mypy_cache/

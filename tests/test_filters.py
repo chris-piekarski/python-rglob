@@ -20,6 +20,11 @@ from rglob._filters import (
     size_predicate,
 )
 
+posix_only = pytest.mark.skipif(
+    os.name != "posix",
+    reason="Test relies on POSIX mode bits not honoured by NTFS",
+)
+
 # ─── parse_size ───────────────────────────────────────────────────────────────
 
 
@@ -127,6 +132,7 @@ def test_kinds_dir_only(tmp_path):
     assert {p.name for p in out} == {"sub"}
 
 
+@posix_only
 def test_kinds_executable(tmp_path):
     """`kinds={'x'}` matches files with the exec bit set."""
     pytest.importorskip("os")  # always available; just to make linter happy
@@ -272,6 +278,7 @@ def test_newer_than_file_filter(tmp_path):
 # ─── find(1)-style permission / owner filters ────────────────────────────────
 
 
+@posix_only
 def test_perm_exact_filter(tmp_path):
     """`perm='600'` matches exact POSIX mode bits."""
     private = tmp_path / "private.txt"
@@ -285,6 +292,7 @@ def test_perm_exact_filter(tmp_path):
     assert {p.name for p in out} == {"private.txt"}
 
 
+@posix_only
 def test_perm_all_and_any_filters(tmp_path):
     """Leading '-' and '/' implement all-bits and any-bits matching."""
     executable = tmp_path / "run.sh"

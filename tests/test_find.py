@@ -171,8 +171,13 @@ def test_case_sensitive_true(tmp_path):
     assert len(find_all(tmp_path, "*.MD", case_sensitive=True)) == 1
 
 
-def test_case_sensitive_false(tmp_path):
+def test_case_sensitive_false(tmp_path, case_sensitive_fs):
     """Case-sensitive `False` accepts either casing."""
+    if not case_sensitive_fs:
+        # APFS/NTFS collapse README.MD and readme.md to one inode; the
+        # case-insensitive matching contract is exercised by
+        # test_case_sensitive_none_follows_os on those hosts.
+        pytest.skip("filesystem is case-insensitive; cannot create both casings")
     (tmp_path / "README.MD").write_text("")
     (tmp_path / "readme.md").write_text("")
     out = find_all(tmp_path, "*.md", case_sensitive=False)

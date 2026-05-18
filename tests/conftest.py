@@ -109,3 +109,26 @@ def _isolate_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Chdir to tmp_path by default so `rglob_()` tests don't escape isolation."""
     monkeypatch.chdir(tmp_path)
     _ = os.getcwd  # Touch to silence unused-import flake
+
+
+@pytest.fixture
+def case_sensitive_fs(tmp_path: Path) -> bool:
+    """Return True iff the filesystem under tmp_path distinguishes file casing.
+
+    APFS (macOS default) and NTFS (Windows default) treat ``README.MD`` and
+    ``readme.md`` as the same path; tests that assume both can coexist as
+    separate inodes must guard themselves with this fixture.
+    """
+    lower = tmp_path / "__case_probe"
+    upper = tmp_path / "__CASE_PROBE"
+    lower.write_text("lower")
+    try:
+        upper.write_text("upper")
+    except OSError:
+        lower.unlink(missing_ok=True)
+        return False
+    try:
+        return not lower.samefile(upper)
+    finally:
+        lower.unlink(missing_ok=True)
+        upper.unlink(missing_ok=True)
