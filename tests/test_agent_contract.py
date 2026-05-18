@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import FrozenInstanceError, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -92,7 +93,9 @@ def test_to_json_dict_serializes_wire_types():
     payload = to_json_dict(result)
 
     assert isinstance(payload, dict)
-    assert payload["results"][0]["path"].endswith("src/main.py")
+    # to_json_dict serialises Path via str(), which uses the host's native
+    # separator — so the suffix probe must use the same separator.
+    assert payload["results"][0]["path"].endswith(str(Path("src") / "main.py"))
     assert payload["results"][0]["mtime"] == "2026-05-15T12:30:00Z"
     assert payload["errors"][0]["code"] == "UNREADABLE"
     assert to_json_dict(object()).startswith("<object object at ")
@@ -187,7 +190,11 @@ def test_file_match_reports_dir_symlink_and_executable_kinds(tmp_path):
     exe_match = file_match(executable, tmp_path, include_errors=True)
 
     assert "d" in dir_match.kinds
-    assert {"f", "x"} <= set(exe_match.kinds)
+    assert "f" in exe_match.kinds
+    if os.name == "posix":
+        # NTFS does not honour Path.chmod() for executable bits, so the
+        # `x` tag is only reliably present on POSIX hosts.
+        assert "x" in exe_match.kinds
 
     try:
         link = tmp_path / "run-link.sh"

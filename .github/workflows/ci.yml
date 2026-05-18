@@ -64,12 +64,14 @@ jobs:
         shell: bash
         run: |
           # POSIX-only tests (perm bits, executable kind, uid/gid) are
-          # skipped on non-Linux hosts, so the coverage gate only fires
-          # on Ubuntu where the full suite runs.
+          # skipped on non-Linux hosts; pass --cov-fail-under=0 there so
+          # both the pytest-cov and the underlying coverage.report
+          # fail_under gates are disabled. The full-suite gate only
+          # fires on Ubuntu.
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             pytest --cov=rglob --cov-branch --cov-report=xml --cov-fail-under=95
           else
-            pytest --cov=rglob --cov-branch --cov-report=xml
+            pytest --cov=rglob --cov-branch --cov-report=xml --cov-fail-under=0
           fi
 
       - name: Behave (BDD)

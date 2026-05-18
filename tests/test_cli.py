@@ -38,11 +38,13 @@ def _build_tree(root):
 
 
 def _normalise(output: str, base) -> str:
-    """Strip the absolute tmp_path so snapshots are portable."""
+    """Strip the absolute tmp_path so snapshots are portable across OSes."""
     sanitized = output.replace(str(base), "<BASE>")
-    # Remove tmp_path leftovers in nested paths (Linux-only)
+    # Remove tmp_path leftovers in nested paths (Linux-only).
     sanitized = re.sub(r"/tmp/pytest-of-[a-zA-Z0-9_]+/pytest-\d+/[^/\s]+", "<BASE>", sanitized)
-    return sanitized
+    # Canonicalise to forward slashes so Windows CLI output matches the
+    # snapshot recorded on Linux.
+    return sanitized.replace("\\", "/")
 
 
 # ─── find ────────────────────────────────────────────────────────────────────
