@@ -1900,17 +1900,17 @@ walker call-graph, <code>dupes</code> pipeline, final public-API class diagram).
     BDD --&gt; BP</code></pre>
 <h2 id="walker-call-graph-phase-3">Walker call-graph — Phase 3<a class="headerlink" href="#walker-call-graph-phase-3" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart TD
-    USER[find(base, patterns, ...)]
-    COMPILE[_compile_patterns&lt;br/&gt;fnmatch + ** translation]
-    HANDLER[_make_error_handler&lt;br/&gt;ignore | warn | raise]
-    WALK[_walk&lt;br/&gt;recursive descent]
-    SCAN[os.scandir&lt;br/&gt;cached DirEntry.d_type]
+    USER["find(base, patterns, ...)"]
+    COMPILE["_compile_patterns&lt;br/&gt;fnmatch + ** translation"]
+    HANDLER["_make_error_handler&lt;br/&gt;ignore | warn | raise"]
+    WALK["_walk&lt;br/&gt;recursive descent"]
+    SCAN["os.scandir&lt;br/&gt;cached DirEntry.d_type"]
     SORT{sort?}
-    MATCH[_matches_any&lt;br/&gt;basename or rel-path]
+    MATCH["_matches_any&lt;br/&gt;basename or rel-path"]
     EXCLUDE[exclude matchers]
     DEPTH{max_depth?}
-    HIDDEN{hidden=False&lt;br/&gt;and name.startswith('.')?}
-    REAL[os.path.realpath&lt;br/&gt;cycle memo]
+    HIDDEN{"hidden=False&lt;br/&gt;and name.startswith('.')?"}
+    REAL["os.path.realpath&lt;br/&gt;cycle memo"]
     YIELD[yield Path]
 
     USER --&gt; COMPILE --&gt; WALK
@@ -1929,24 +1929,23 @@ walker call-graph, <code>dupes</code> pipeline, final public-API class diagram).
     REAL -- already visited --&gt; WALK</code></pre>
 <h2 id="symlink-loop-detection">Symlink-loop detection<a class="headerlink" href="#symlink-loop-detection" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>sequenceDiagram
-    participant F as find(...)
+    participant F as find()
     participant W as _walk
     participant FS as os.scandir
     participant R as os.path.realpath
-    participant V as visited: set[str]
+    participant V as visited
 
     F-&gt;&gt;V: add realpath(base)
     F-&gt;&gt;W: walk(base, depth=0)
     W-&gt;&gt;FS: scandir(base)
-    FS--&gt;&gt;W: [a/, sym-&gt;base]
+    FS--&gt;&gt;W: entries a-slash and sym-to-base
     W-&gt;&gt;R: realpath(base/a/)
-    R--&gt;&gt;W: /base/a (new)
+    R--&gt;&gt;W: /base/a is new
     W-&gt;&gt;V: add /base/a
     W-&gt;&gt;W: recurse(base/a, depth=1)
-
     W-&gt;&gt;R: realpath(base/sym)
-    R--&gt;&gt;W: /base (already in V)
-    W--&gt;&gt;F: skip; do not recurse</code></pre>
+    R--&gt;&gt;W: /base already in visited
+    W--&gt;&gt;F: skip and do not recurse</code></pre>
 <h2 id="pattern-translation-the-story">Pattern translation (the <code>**</code> story)<a class="headerlink" href="#pattern-translation-the-story" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR
     P[pattern: str]
