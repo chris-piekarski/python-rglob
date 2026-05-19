@@ -1,0 +1,3 @@
+Agent fixture notes.
+
+TODO: exercise grep context capture.

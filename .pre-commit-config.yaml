@@ -1,0 +1,40 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        files: ^src/rglob/
+        additional_dependencies: []
+
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: v2.5.0
+    hooks:
+      - id: pyproject-fmt
+
+  - repo: local
+    hooks:
+      - id: pytest-quick
+        name: pytest (quick, no coverage)
+        entry: pytest -x --no-cov -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

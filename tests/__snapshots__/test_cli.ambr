@@ -1,0 +1,21 @@
+# serializer version: 1
+# name: test_find_default_output
+  '''
+  <BASE>/a.py
+  <BASE>/b.py
+  <BASE>/sub/nested.py
+  
+  '''
+# ---
+# name: test_lcount_total
+  '''
+  Total lines: 8
+  
+  '''
+# ---
+# name: test_tsize_default_unit
+  '''
+  Total size: 0.00 MB
+  
+  '''
+# ---

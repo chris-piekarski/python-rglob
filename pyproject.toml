@@ -1,9 +1,196 @@
-[tool.pylint.main]
-recursive = true
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
 
-[tool.pylint.messages_control]
-disable = []
+[project]
+name = "rglob"
+description = "Lightweight recursive glob helpers for Python — find files, count lines, sum sizes."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["glob", "rglob", "recursive", "filesystem", "find", "line-counter"]
+authors = [
+    { name = "Christopher Piekarski", email = "chris@cpiekarski.com" },
+]
+maintainers = [
+    { name = "Christopher Piekarski", email = "chris@cpiekarski.com" },
+]
+classifiers = [
+    "Development Status :: 6 - Mature",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Filesystems",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13",
+]
 
-[tool.pylint.format]
-max-line-length = 100
+[project.urls]
+Homepage = "https://github.com/chris-piekarski/python-rglob"
+Repository = "https://github.com/chris-piekarski/python-rglob"
+Issues = "https://github.com/chris-piekarski/python-rglob/issues"
+Changelog = "https://github.com/chris-piekarski/python-rglob/blob/master/CHANGELOG.md"
+Documentation = "https://chris-piekarski.github.io/python-rglob/"
 
+[project.scripts]
+rglob = "rglob.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.100",
+    "syrupy>=4",
+    "pre-commit>=3",
+    "twine>=5",
+]
+bdd = [
+    "behave>=1.2.6",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "mkdocs-typer2>=0.3",
+    "pymdown-extensions>=10",
+]
+gitignore = [
+    "pathspec>=0.12",
+]
+ext = [
+    "xxhash>=3.4",
+    "wcmatch>=8.5",
+]
+mcp = [
+    "mcp>=1.0",
+    "pathspec>=0.12",
+    "xxhash>=3.4",
+]
+bench = [
+    "pytest-benchmark>=4",
+]
+
+[tool.hatch.version]
+path = "src/rglob/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rglob"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "bench/",
+    "scripts/",
+    "tests/",
+    "features/",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
+    "LICENSE",
+    "Makefile",
+]
+
+# ─── Ruff ──────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = [".venv", "site", "dist", "build"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pyflakes / pycodestyle
+    "I",             # isort
+    "B",             # bugbear
+    "UP",            # pyupgrade
+    "SIM",           # simplify
+    "RUF",           # ruff-native
+    "PTH",           # pathlib instead of os.path
+    "PERF",          # perflint
+    "D",             # pydocstyle
+]
+ignore = [
+    "D100",  # missing docstring in public module — we have selective coverage
+    "D104",  # missing docstring in public package
+    "D203",  # one-blank-line-before-class conflicts with D211
+    "D213",  # multi-line-summary-second-line conflicts with D212
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "B011"]
+# Typer's idiomatic defaults use `Path.cwd()` and `[]` literals; these are
+# *not* mutable-default footguns (Click rebinds them per call), so B008/B006
+# are suppressed for the CLI module.
+"src/rglob/cli.py" = ["B006", "B008"]
+"features/**" = ["D", "PTH", "PERF"]
+"bench/**" = ["D"]
+
+# ─── Mypy ──────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/rglob"]
+show_error_codes = true
+warn_unused_ignores = true
+enable_error_code = ["redundant-self", "redundant-expr", "truthy-bool"]
+
+[[tool.mypy.overrides]]
+module = ["behave.*", "pathspec.*", "xxhash.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["mcp.*"]
+ignore_missing_imports = true
+
+# ─── Pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+
+# ─── Coverage ──────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["rglob"]
+branch = true
+parallel = true
+
+[tool.coverage.paths]
+source = ["src/rglob", "*/site-packages/rglob"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "@overload",
+]

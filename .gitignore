@@ -1,10 +1,40 @@
-# Ignore Python-Compiled Files
+# Python bytecode + caches
 *.pyc
+__pycache__/
 
-# Ignore Eclipse/PyDev Project Files
+# Editor / IDE
 .project
 .pydevproject
-.settings
+.settings/
+.idea/
+.vscode/
 
-# Ignore packaging metadata
+# Packaging artefacts
 *.egg-info/
+build/
+dist/
+site/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv lock file — rglob is a published library, so deps are declared in
+# pyproject.toml and the lock file is regenerated per-environment.
+uv.lock
+
+# Test / coverage / type caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# OS noise
+.DS_Store
+Thumbs.db

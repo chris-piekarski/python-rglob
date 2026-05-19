@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev,bdd,docs,gitignore,ext]"
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Mypy
+        run: mypy --strict src/rglob
+
+  test:
+    name: Test (${{ matrix.os }} · py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev,bdd,gitignore,ext]"
+
+      - name: Pytest (with coverage)
+        shell: bash
+        run: |
+          # POSIX-only tests (perm bits, executable kind, uid/gid) are
+          # skipped on non-Linux hosts; pass --cov-fail-under=0 there so
+          # both the pytest-cov and the underlying coverage.report
+          # fail_under gates are disabled. The full-suite gate only
+          # fires on Ubuntu.
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            pytest --cov=rglob --cov-branch --cov-report=xml --cov-fail-under=95
+          else
+            pytest --cov=rglob --cov-branch --cov-report=xml --cov-fail-under=0
+          fi
+
+      - name: Behave (BDD)
+        run: behave
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          flags: ${{ matrix.os }}-py${{ matrix.python-version }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
