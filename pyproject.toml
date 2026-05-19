@@ -4,12 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rglob"
-description = "Lightweight recursive glob helpers for Python — find files, count lines, sum sizes."
+description = "Lightweight recursive search for Python, CLIs, and coding agents — globs, content grep, stat/dup helpers, JSON-stable outputs, typed agent API, optional MCP server."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-keywords = ["glob", "rglob", "recursive", "filesystem", "find", "line-counter"]
+keywords = [
+    "glob",
+    "recursive",
+    "file-search",
+    "grep",
+    "cli",
+    "typer",
+    "mcp",
+    "model-context-protocol",
+    "coding-agents",
+    "agent-tooling",
+    "pathlib",
+    "typed",
+]
 authors = [
     { name = "Christopher Piekarski", email = "chris@cpiekarski.com" },
 ]
@@ -38,11 +51,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/chris-piekarski/python-rglob"
-Repository = "https://github.com/chris-piekarski/python-rglob"
+Homepage = "https://chris-piekarski.github.io/python-rglob/"
+Source = "https://github.com/chris-piekarski/python-rglob"
 Issues = "https://github.com/chris-piekarski/python-rglob/issues"
 Changelog = "https://github.com/chris-piekarski/python-rglob/blob/master/CHANGELOG.md"
-Documentation = "https://chris-piekarski.github.io/python-rglob/"
 
 [project.scripts]
 rglob = "rglob.cli:main"
