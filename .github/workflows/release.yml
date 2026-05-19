@@ -7,7 +7,11 @@ on:
 
 permissions:
   contents: write   # to create the GitHub Release
-  id-token: write   # for PyPI OIDC trusted publishing
+
+# PyPI publishing is intentionally manual via `make publish` (twine).
+# This workflow builds the wheel + sdist and cuts a GitHub Release with
+# the changelog slice and artifacts attached — the maintainer uploads
+# to PyPI separately.
 
 jobs:
   build:
@@ -33,26 +37,9 @@ jobs:
           name: dist
           path: dist/
 
-  publish:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/rglob
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish (OIDC, no token)
-        uses: pypa/gh-action-pypi-publish@release/v1
-
   github-release:
     name: GitHub Release
-    needs: publish
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
