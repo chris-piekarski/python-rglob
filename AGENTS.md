@@ -127,6 +127,38 @@ hit **100%**. Locally the gate is 100% on a single Linux run. See
   (`if __name__ == "__main__":` guards, cross-platform branches that no
   matrix cell covers). Every pragma carries a one-line justification.
 
+## Mermaid diagrams
+
+`mkdocs build --strict` does **not** catch Mermaid syntax errors —
+Mermaid renders client-side, so a broken diagram still produces a
+clean static site that throws "Syntax error in text" only when a
+visitor loads the page. To prevent regressions:
+
+- Run `make lint-docs` (or `python3 scripts/lint_mermaid.py`) before
+  pushing changes that touch any `.md` file. It extracts every
+  ```mermaid block and validates each via `mmdc`. CI runs the same
+  gate; the pre-commit hook fires it locally too.
+- Install the CLI once with `npm install -g @mermaid-js/mermaid-cli`.
+
+Mermaid 11 is strict about a few things that look harmless. The rules
+worth knowing before writing a new diagram:
+
+- **Flowchart node labels** that contain `(`, `)`, `'`, `|`, or other
+  operator-looking characters must be double-quoted:
+  `A["find(base, ...)"]`, not `A[find(base, ...)]`. The unquoted form
+  trips the parser on `(`.
+- **Sequence-diagram message text** (everything after `A->>B:`) stays
+  ASCII-only. The parser rejects `[ ]`, `;`, em-dashes (`—`), and
+  Unicode arrows (`→`) inside message bodies. Use plain prose: write
+  "`/base/a is new`", not "`/base/a — new`"; "`a-slash and sym-to-base`",
+  not "`[a/, sym → base]`".
+- **Participant aliases** stay simple — no parens, no `:`, no
+  brackets. `participant V as visited`, not
+  `participant V as visited: set[str]`.
+- **Generics** in class diagrams use paired tildes: `Iterator~Path~`,
+  `list~list~Path~~`. Don't write `Callable~|None`; spell it
+  `Callable` or `Optional~Callable~`.
+
 ## Where to look first
 
 - **Roadmap**: [`docs/plans/modernization-roadmap.md`](docs/plans/modernization-roadmap.md)

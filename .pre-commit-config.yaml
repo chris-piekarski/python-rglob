@@ -38,3 +38,12 @@ repos:
         types: [python]
         pass_filenames: false
         stages: [pre-push]
+
+      - id: lint-mermaid
+        name: validate mermaid diagrams
+        entry: python3 scripts/lint_mermaid.py
+        language: system
+        files: \.md$
+        # The validator skips gracefully if `mmdc` isn't on PATH so
+        # contributors without Node tooling aren't blocked locally;
+        # CI installs mmdc and enforces the gate.

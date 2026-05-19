@@ -9,7 +9,7 @@ PYTHON ?= $(if $(wildcard .venv/bin/python),$(CURDIR)/.venv/bin/python,python3)
 MKDOCS ?= $(if $(wildcard .venv/bin/mkdocs),$(CURDIR)/.venv/bin/mkdocs,mkdocs)
 PACKAGE := rglob
 
-.PHONY: help repo-stats build publish lint test bench fmt docs docs-build dev-setup clean
+.PHONY: help repo-stats build publish lint lint-docs test bench fmt docs docs-build dev-setup clean
 
 help:  ## Show this help menu
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -28,6 +28,9 @@ lint:  ## Run ruff + mypy --strict (gating)
 	$(PYTHON) -m ruff check .
 	$(PYTHON) -m ruff format --check .
 	$(PYTHON) -m mypy --strict src/$(PACKAGE)
+
+lint-docs:  ## Validate Mermaid diagrams in *.md (requires mmdc on PATH)
+	$(PYTHON) scripts/lint_mermaid.py
 
 test:  ## Run pytest with coverage + behave (gating; local 100% coverage)
 	$(PYTHON) -m pytest --cov=$(PACKAGE) --cov-branch --cov-report=term-missing --cov-fail-under=100
