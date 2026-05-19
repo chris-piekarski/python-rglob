@@ -68,17 +68,17 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    USER[find(base, patterns, ...)]
-    COMPILE[_compile_patterns<br/>fnmatch + ** translation]
-    HANDLER[_make_error_handler<br/>ignore | warn | raise]
-    WALK[_walk<br/>recursive descent]
-    SCAN[os.scandir<br/>cached DirEntry.d_type]
+    USER["find(base, patterns, ...)"]
+    COMPILE["_compile_patterns<br/>fnmatch + ** translation"]
+    HANDLER["_make_error_handler<br/>ignore | warn | raise"]
+    WALK["_walk<br/>recursive descent"]
+    SCAN["os.scandir<br/>cached DirEntry.d_type"]
     SORT{sort?}
-    MATCH[_matches_any<br/>basename or rel-path]
+    MATCH["_matches_any<br/>basename or rel-path"]
     EXCLUDE[exclude matchers]
     DEPTH{max_depth?}
-    HIDDEN{hidden=False<br/>and name.startswith('.')?}
-    REAL[os.path.realpath<br/>cycle memo]
+    HIDDEN{"hidden=False<br/>and name.startswith('.')?"}
+    REAL["os.path.realpath<br/>cycle memo"]
     YIELD[yield Path]
 
     USER --> COMPILE --> WALK
@@ -101,24 +101,23 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant F as find(...)
+    participant F as find()
     participant W as _walk
     participant FS as os.scandir
     participant R as os.path.realpath
-    participant V as visited: set[str]
+    participant V as visited
 
     F->>V: add realpath(base)
     F->>W: walk(base, depth=0)
     W->>FS: scandir(base)
-    FS-->>W: [a/, sym->base]
+    FS-->>W: entries a-slash and sym-to-base
     W->>R: realpath(base/a/)
-    R-->>W: /base/a (new)
+    R-->>W: /base/a is new
     W->>V: add /base/a
     W->>W: recurse(base/a, depth=1)
-
     W->>R: realpath(base/sym)
-    R-->>W: /base (already in V)
-    W-->>F: skip; do not recurse
+    R-->>W: /base already in visited
+    W-->>F: skip and do not recurse
 ```
 
 ## Pattern translation (the `**` story)
